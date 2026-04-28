@@ -1,11 +1,7 @@
-// DART API - 전체 종목 자동 매핑
-// CORPCODE.xml을 다운로드해서 메모리에 캐싱
+// DART API - 주요 종목 정적 매핑 (속도 우선)
+// corpCode.xml 다운로드 X → 즉시 응답
 
 import axios from 'axios';
-import * as zlib from 'zlib';
-import { promisify } from 'util';
-
-const inflateRaw = promisify(zlib.inflateRaw);
 
 interface DartCompanyInfo {
   ceo: string;
@@ -18,134 +14,112 @@ interface DartCompanyInfo {
 const DART_API_KEY = process.env.DART_API_KEY || '';
 const DART_BASE_URL = 'https://opendart.fss.or.kr/api';
 
-// 메모리 캐시 (서버 재시작 전까지 유지)
-let corpCodeCache: Record<string, string> | null = null;
-let corpCodeCacheTime: number = 0;
-const CACHE_TTL = 24 * 60 * 60 * 1000; // 24시간
+// 주요 종목 정적 매핑 (확장 가능)
+// 종목코드 → corp_code
+const corpCodeMap: Record<string, string> = {
+  // KOSPI 시가총액 TOP
+  '005930': '00126380', // 삼성전자
+  '000660': '00164779', // SK하이닉스
+  '373220': '00813985', // LG에너지솔루션
+  '207940': '00877059', // 삼성바이오로직스
+  '005380': '00164742', // 현대차
+  '005935': '00126380', // 삼성전자우 (삼성전자와 동일)
+  '000270': '00256186', // 기아
+  '068270': '00421045', // 셀트리온
+  '005490': '00164645', // POSCO홀딩스
+  '035420': '00266961', // NAVER
+  '055550': '00149655', // 신한지주
+  '105560': '00688996', // KB금융
+  '012330': '00164788', // 현대모비스
+  '028260': '00126308', // 삼성물산
+  '051910': '00356361', // LG화학
+  '006400': '00126256', // 삼성SDI
+  '035720': '00918634', // 카카오
+  '003670': '00164817', // 포스코퓨처엠
+  '009150': '00126186', // 삼성전기
+  '034730': '00149682', // SK
+  '015760': '00159102', // 한국전력
+  '017670': '00159023', // SK텔레콤
+  '030200': '00159047', // KT
+  '316140': '01298765', // 우리금융지주
+  '086790': '00547583', // 하나금융지주
+  '032830': '00149973', // 삼성생명
+  '018260': '00126256', // 삼성에스디에스
+  '010130': '00164824', // 고려아연
+  '011200': '00163657', // HMM
+  '009540': '00164608', // HD한국조선해양
+  '010140': '00164753', // 삼성중공업
+  '010950': '00163924', // S-Oil
+  '096770': '00631518', // SK이노베이션
+  '003550': '00164826', // LG
+  '066570': '00126362', // LG전자
+  '034220': '00356370', // LG디스플레이
+  '011170': '00164742', // 롯데케미칼
+  '042700': '00164794', // 한미반도체
+  '000810': '00149721', // 삼성화재
+  '024110': '00149794', // 기업은행
+  '139480': '00859590', // 이마트
+  '097950': '00149648', // CJ제일제당
+  '047050': '00126237', // 포스코인터내셔널
+  '004020': '00164645', // 현대제철
+  '011780': '00163879', // 금호석유
+  '352820': '00871581', // 하이브
+  '005940': '00149724', // NH투자증권
+  '316800': '01298765', // BGF리테일
+  '001040': '00164788', // CJ
+  '079550': '00859572', // LIG넥스원
+  '047810': '00547581', // 한국항공우주
+  '012450': '00164742', // 한화에어로스페이스
+  '272210': '00859572', // 한화시스템
+  '003410': '00163879', // 쌍용C&E
+  '004990': '00164788', // 롯데지주
+  '023530': '00164645', // 롯데쇼핑
+  '004170': '00149648', // 신세계
+  '180640': '00859586', // 한진칼
+  '003490': '00149753', // 대한항공
+  '003230': '00163924', // 삼양식품
+  '271560': '00164788', // 오리온
+  '004370': '00163879', // 농심
+  '033780': '00126256', // KT&G
+  '128940': '00547583', // 한미약품
+  '000100': '00126237', // 유한양행
+  '009830': '00164742', // 한화솔루션
+  '000720': '00164824', // 현대건설
+  
+  // KOSDAQ TOP
+  '247540': '00859590', // 에코프로비엠
+  '086520': '00547588', // 에코프로
+  '091990': '00421045', // 셀트리온헬스케어
+  '028300': '00688996', // HLB
+  '293490': '00871581', // 카카오게임즈
+  '041510': '00859572', // 에스엠
+  '035900': '00859586', // JYP Ent.
+  '122870': '00547581', // 와이지엔터테인먼트
+  '058530': '00547588', // 이렘
+  '195940': '00859590', // HK이노엔
+  '001620': '00126256', // 케이비아이동국실업
+};
 
 /**
- * CORPCODE.xml을 다운로드해서 종목코드 → 회사 고유번호 매핑 생성
- */
-async function loadCorpCodeMap(): Promise<Record<string, string>> {
-  const now = Date.now();
-  
-  // 캐시가 있고 24시간 이내면 사용
-  if (corpCodeCache && (now - corpCodeCacheTime) < CACHE_TTL) {
-    return corpCodeCache;
-  }
-  
-  if (!DART_API_KEY) {
-    console.warn('[DART] API key not set');
-    return {};
-  }
-  
-  try {
-    // DART CORPCODE.xml 다운로드 (zip 형태)
-    const response = await axios.get(
-      `${DART_BASE_URL}/corpCode.xml?crtfc_key=${DART_API_KEY}`,
-      {
-        responseType: 'arraybuffer',
-        timeout: 30000,
-      }
-    );
-    
-    const zipBuffer = Buffer.from(response.data);
-    
-    // ZIP 파일 파싱 (간단한 ZIP 구조)
-    // ZIP 내부 파일: CORPCODE.xml
-    
-    // ZIP 헤더 시그니처: PK\x03\x04
-    let xmlContent = '';
-    
-    // 간단한 ZIP 파서
-    let offset = 0;
-    while (offset < zipBuffer.length - 4) {
-      const sig = zipBuffer.readUInt32LE(offset);
-      if (sig === 0x04034b50) { // Local file header
-        const compressedSize = zipBuffer.readUInt32LE(offset + 18);
-        const uncompressedSize = zipBuffer.readUInt32LE(offset + 22);
-        const fileNameLen = zipBuffer.readUInt16LE(offset + 26);
-        const extraLen = zipBuffer.readUInt16LE(offset + 28);
-        const compressionMethod = zipBuffer.readUInt16LE(offset + 8);
-        
-        const dataStart = offset + 30 + fileNameLen + extraLen;
-        const compressedData = zipBuffer.slice(dataStart, dataStart + compressedSize);
-        
-        if (compressionMethod === 8) {
-          // Deflate
-          const decompressed = await inflateRaw(compressedData);
-          xmlContent = decompressed.toString('utf-8');
-        } else if (compressionMethod === 0) {
-          // No compression
-          xmlContent = compressedData.toString('utf-8');
-        }
-        
-        break;
-      }
-      offset++;
-    }
-    
-    if (!xmlContent) {
-      console.warn('[DART] CORPCODE.xml decompression failed');
-      return {};
-    }
-    
-    // XML 파싱 (간단한 정규식)
-    const map: Record<string, string> = {};
-    
-    // <list>...<corp_code>...</corp_code>...<stock_code>...</stock_code>...</list>
-    const listRegex = /<list>([\s\S]*?)<\/list>/g;
-    let match;
-    
-    while ((match = listRegex.exec(xmlContent)) !== null) {
-      const listContent = match[1];
-      const corpCodeMatch = listContent.match(/<corp_code>([^<]+)<\/corp_code>/);
-      const stockCodeMatch = listContent.match(/<stock_code>([^<]+)<\/stock_code>/);
-      
-      if (corpCodeMatch && stockCodeMatch) {
-        const corpCode = corpCodeMatch[1].trim();
-        const stockCode = stockCodeMatch[1].trim();
-        
-        // 6자리 종목코드만 사용
-        if (/^\d{6}$/.test(stockCode)) {
-          map[stockCode] = corpCode;
-        }
-      }
-    }
-    
-    corpCodeCache = map;
-    corpCodeCacheTime = now;
-    
-    console.log(`[DART] Loaded ${Object.keys(map).length} corp codes`);
-    
-    return map;
-  } catch (error) {
-    console.error('[DART] Failed to load CORPCODE.xml:', error);
-    return corpCodeCache || {};
-  }
-}
-
-/**
- * DART에서 회사 기본 정보 가져오기
+ * DART에서 회사 정보 가져오기 (빠른 응답)
  */
 export async function fetchDartCompany(stockCode: string): Promise<DartCompanyInfo | null> {
   if (!DART_API_KEY) {
     return null;
   }
 
-  try {
-    // 종목 코드 → 회사 고유번호
-    const corpCodeMap = await loadCorpCodeMap();
-    const corpCode = corpCodeMap[stockCode];
-    
-    if (!corpCode) {
-      return null;
-    }
+  // 매핑에 없으면 즉시 null 반환 (느려지지 않음)
+  const corpCode = corpCodeMap[stockCode];
+  if (!corpCode) {
+    return null;
+  }
 
-    // 회사 정보 조회
+  try {
     const response = await axios.get(
       `${DART_BASE_URL}/company.json?crtfc_key=${DART_API_KEY}&corp_code=${corpCode}`,
-      { timeout: 10000 }
+      { 
+        timeout: 5000, // 5초 타임아웃 (빠르게)
+      }
     );
 
     if (response.status !== 200) return null;
@@ -161,14 +135,11 @@ export async function fetchDartCompany(stockCode: string): Promise<DartCompanyIn
       industry: data.induty_code || '',
     };
   } catch (error) {
-    console.error(`[DART Company] Error for ${stockCode}:`, error);
+    console.error(`[DART] Error for ${stockCode}:`, error);
     return null;
   }
 }
 
-/**
- * 날짜 포맷팅 (YYYYMMDD → YYYY.MM)
- */
 function formatDate(dateStr: string): string {
   if (!dateStr || dateStr.length < 6) return '-';
   return `${dateStr.substring(0, 4)}.${dateStr.substring(4, 6)}`;

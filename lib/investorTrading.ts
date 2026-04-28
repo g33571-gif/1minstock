@@ -1,13 +1,13 @@
-// 외국인/기관/개인 5일 매매 동향
-// 네이버 금융 API 사용
+// 외국인/기관/개인 매매 동향 - 빠른 응답
+// 실패 시 빠르게 포기 (페이지 응답 우선)
 
 import axios from 'axios';
 
 interface InvestorTrading {
-  foreign5d: number;        // 외국인 5일 누적 (음수=매도)
-  institution5d: number;    // 기관 5일 누적
-  individual5d: number;     // 개인 5일 누적
-  consecutiveBuyDays: number; // 외국인 연속 매수일
+  foreign5d: number;
+  institution5d: number;
+  individual5d: number;
+  consecutiveBuyDays: number;
   daily: Array<{
     date: string;
     foreign: number;
@@ -19,34 +19,25 @@ interface InvestorTrading {
 const headers = {
   'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15',
   'Accept': 'application/json, text/plain, */*',
-  'Accept-Language': 'ko-KR,ko;q=0.9',
   'Origin': 'https://m.stock.naver.com',
   'Referer': 'https://m.stock.naver.com/',
 };
 
-/**
- * 외국인/기관/개인 매매 동향 가져오기
- */
 export async function fetchInvestorTrading(code: string): Promise<InvestorTrading | null> {
   try {
     if (!/^\d{6}$/.test(code)) return null;
 
-    // 네이버 금융 외국인/기관 매매 API
     const response = await axios.get(
       `https://m.stock.naver.com/api/stock/${code}/trend`,
       {
         headers,
-        timeout: 10000,
+        timeout: 3000, // 3초 타임아웃 (빠르게)
       }
     );
 
     const data = response.data;
+    if (!data || !Array.isArray(data) || data.length === 0) return null;
 
-    if (!data || !Array.isArray(data) || data.length === 0) {
-      return null;
-    }
-
-    // 최근 5일 데이터
     const recent5Days = data.slice(0, 5);
     
     let foreign5d = 0;
@@ -64,13 +55,9 @@ export async function fetchInvestorTrading(code: string): Promise<InvestorTradin
       institution5d += institution;
       individual5d += individual;
       
-      // 외국인 연속 매수일 (최근부터)
       if (!foundFirstSell) {
-        if (foreign > 0) {
-          consecutiveBuyDays++;
-        } else {
-          foundFirstSell = true;
-        }
+        if (foreign > 0) consecutiveBuyDays++;
+        else foundFirstSell = true;
       }
       
       return {
@@ -89,7 +76,7 @@ export async function fetchInvestorTrading(code: string): Promise<InvestorTradin
       daily,
     };
   } catch (error) {
-    console.error(`[Investor Trading] Error for ${code}:`, error);
+    // 실패 시 빠르게 null 반환 (페이지 응답 우선!)
     return null;
   }
 }

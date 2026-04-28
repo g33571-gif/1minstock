@@ -48,7 +48,7 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
       `https://m.stock.naver.com/api/stock/${code}/integration`,
       {
         headers,
-        timeout: 10000,
+        timeout: 5000,
       }
     );
 
