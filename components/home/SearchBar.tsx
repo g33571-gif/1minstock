@@ -1,13 +1,11 @@
 'use client';
 
 import { useState, useRef, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
 import { searchStocks, koreanStocks } from '@/lib/data/stocks';
 
 const popularKeywords = ['삼성전자', 'SK하이닉스', '에코프로', 'NAVER'];
 
 export default function SearchBar() {
-  const router = useRouter();
   const [query, setQuery] = useState('');
   const [showDropdown, setShowDropdown] = useState(false);
   const [highlightIndex, setHighlightIndex] = useState(-1);
@@ -25,9 +23,13 @@ export default function SearchBar() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
   
-  const handleSelect = (code: string) => {
-    setShowDropdown(false);
-    router.push(`/${code}`);
+  // 페이지 이동 - window.location 사용 (가장 안정적)
+  const navigateToStock = (code: string) => {
+    window.location.href = `/${code}`;
+  };
+  
+  const navigateToSearch = (q: string) => {
+    window.location.href = `/search?q=${encodeURIComponent(q)}`;
   };
   
   const handleSubmit = (e: any) => {
@@ -35,17 +37,20 @@ export default function SearchBar() {
     const trimmed = query.trim();
     if (!trimmed) return;
     
+    // 6자리 숫자면 직접 종목 페이지
     if (/^\d{6}$/.test(trimmed)) {
-      router.push(`/${trimmed}`);
+      navigateToStock(trimmed);
       return;
     }
     
+    // 자동완성 결과 있으면 첫 번째로
     if (filtered.length > 0) {
-      handleSelect(filtered[0].code);
+      navigateToStock(filtered[0].code);
       return;
     }
     
-    router.push(`/search?q=${encodeURIComponent(trimmed)}`);
+    // 그 외는 검색 결과 페이지
+    navigateToSearch(trimmed);
   };
   
   const handleKeyDown = (e: any) => {
@@ -59,7 +64,7 @@ export default function SearchBar() {
       setHighlightIndex(prev => Math.max(prev - 1, 0));
     } else if (e.key === 'Enter' && highlightIndex >= 0) {
       e.preventDefault();
-      handleSelect(filtered[highlightIndex].code);
+      navigateToStock(filtered[highlightIndex].code);
     } else if (e.key === 'Escape') {
       setShowDropdown(false);
     }
@@ -99,10 +104,9 @@ export default function SearchBar() {
         {showDropdown && filtered.length > 0 && (
           <div className="absolute top-full left-0 right-0 mt-1.5 bg-white rounded-2xl border border-emerald-700/10 shadow-lg z-50 overflow-hidden max-h-[400px] overflow-y-auto">
             {filtered.map((stock, idx) => (
-              <button
+              <a
                 key={stock.code}
-                type="button"
-                onClick={() => handleSelect(stock.code)}
+                href={`/${stock.code}`}
                 onMouseEnter={() => setHighlightIndex(idx)}
                 className={`w-full flex items-center justify-between px-4 py-3 text-left transition-colors ${
                   highlightIndex === idx ? 'bg-emerald-50' : 'hover:bg-gray-50'
@@ -122,7 +126,7 @@ export default function SearchBar() {
                   </span>
                 </div>
                 <span className="text-xs text-text-muted font-mono flex-shrink-0">{stock.code}</span>
-              </button>
+              </a>
             ))}
           </div>
         )}
@@ -135,13 +139,13 @@ export default function SearchBar() {
             const stock = koreanStocks.find(s => s.name === kw);
             if (!stock) return null;
             return (
-              <button
+              <a
                 key={kw}
-                onClick={() => router.push(`/${stock.code}`)}
+                href={`/${stock.code}`}
                 className="text-xs px-3 py-1.5 bg-white text-emerald-700 border border-emerald-700/20 rounded-full font-medium hover:bg-emerald-50 transition-colors"
               >
                 {kw}
-              </button>
+              </a>
             );
           })}
         </div>
