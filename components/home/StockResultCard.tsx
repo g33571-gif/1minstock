@@ -36,9 +36,9 @@ function fmt(n: number) { return n.toLocaleString('ko-KR'); }
 function fmtAmt(n: number) {
   const abs = Math.abs(n);
   const sign = n >= 0 ? '+' : '-';
-  if (abs >= 100_000_000_000) return `${sign}${(abs / 100_000_000_000).toFixed(1)}조`;
-  if (abs >= 100_000_000)     return `${sign}${(abs / 100_000_000).toFixed(1)}억`;
-  if (abs >= 10_000)           return `${sign}${(abs / 10_000).toFixed(0)}만`;
+  if (abs >= 100_000_000_000) return `${sign}${(abs/100_000_000_000).toFixed(1)}조`;
+  if (abs >= 100_000_000)     return `${sign}${(abs/100_000_000).toFixed(1)}억`;
+  if (abs >= 10_000)           return `${sign}${(abs/10_000).toFixed(0)}만`;
   return n !== 0 ? `${sign}${abs.toLocaleString('ko-KR')}` : '-';
 }
 
@@ -54,41 +54,33 @@ export default function StockResultCard({ data, onClose }: {
     data.pricePos <= 60 ? '중간 구간' :
     data.pricePos <= 80 ? '중간~고점' : '고점 근처';
 
-  // 추세 판단 (단순: 등락률 기반)
-  const trendLabel = data.changePercent > 1.5 ? '상승 중 ↗' :
-    data.changePercent > 0 ? '소폭 상승 ↗' :
-    data.changePercent < -1.5 ? '하락 중 ↘' :
-    data.changePercent < 0 ? '소폭 하락 ↘' : '보합';
-  const trendColor = data.changePercent >= 0 ? 'text-red-600' : 'text-blue-600';
-  const trendBg = data.changePercent >= 0 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100';
+  // 추세
+  const trendLabel = data.changePercent > 2 ? '강한 상승' :
+    data.changePercent > 0.5 ? '상승 중' :
+    data.changePercent < -2 ? '강한 하락' :
+    data.changePercent < -0.5 ? '하락 중' : '보합';
+  const trendArrow = data.changePercent >= 0 ? '↗' : '↘';
+  const isUpTrend = data.changePercent >= 0;
 
-  // 거래량 비율
+  // 거래량
   const vr = data.volumeRatio || 100;
-  const volLabel = vr >= 300 ? `평균 대비 +${Math.round(vr-100)}% 폭발` :
-    vr >= 200 ? `평균 대비 +${Math.round(vr-100)}% 급증` :
-    vr >= 150 ? `평균 대비 +${Math.round(vr-100)}% 증가` :
-    vr >= 80  ? `평균 수준` : `평균 대비 감소`;
-  const volColor = vr >= 150 ? 'text-red-600' : 'text-slate-600';
-  const volBg = vr >= 150 ? 'bg-red-50 border-red-100' : 'bg-slate-50 border-slate-200';
+  const isVolHigh = vr >= 150;
+  const volText = vr >= 300 ? `+${Math.round(vr-100)}%` :
+    vr >= 150 ? `+${Math.round(vr-100)}%` :
+    vr >= 80  ? '보통' : '감소';
+  const volSub = vr >= 300 ? '폭발적 급증' :
+    vr >= 200 ? '거래량 급증' :
+    vr >= 150 ? '거래량 증가' :
+    vr >= 80  ? '평균 수준' : '평균 이하';
 
-  // 외국인 수급
-  const fLabel = data.foreignConsecutiveDays >= 3
-    ? `${data.foreignConsecutiveDays}일 연속 매수`
-    : data.foreign5d > 0 ? `순매수 ${fmtAmt(data.foreign5d)}`
-    : data.foreign5d < 0 ? `순매도 ${fmtAmt(data.foreign5d)}`
-    : '-';
-  const fColor = data.foreign5d >= 0 ? 'text-red-600' : 'text-blue-600';
-  const fBg = data.foreign5d >= 0 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100';
+  // 외국인
+  const hasForeign = data.foreign5d !== 0;
+  const isForeignBuy = data.foreign5d >= 0;
+  const fDays = data.foreignConsecutiveDays;
 
   return (
     <div style={{ animation: 'slideDown 0.25s ease' }}>
       <style>{`@keyframes slideDown{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}`}</style>
-
-      {/* 닫기 */}
-      <div className="flex justify-between items-center mb-2">
-        <span className="text-[11px] text-slate-400">검색 결과</span>
-        <button onClick={onClose} className="text-[11px] text-slate-400 hover:text-slate-600 px-2 py-1">✕ 닫기</button>
-      </div>
 
       {/* 헤더 */}
       <div className="bg-emerald-900 rounded-2xl p-4 mb-3 text-white">
@@ -114,7 +106,7 @@ export default function StockResultCard({ data, onClose }: {
           {[
             { label: '시가', val: fmt(data.openToday || data.price), color: 'text-white' },
             { label: '고가', val: fmt(data.highToday || data.price), color: 'text-red-300' },
-            { label: '저가', val: fmt(data.lowToday || data.price), color: 'text-blue-300' },
+            { label: '저가', val: fmt(data.lowToday  || data.price), color: 'text-blue-300' },
             { label: '시총', val: data.marketCap, color: 'text-white' },
           ].map(({ label, val, color }) => (
             <div key={label}>
@@ -170,8 +162,7 @@ export default function StockResultCard({ data, onClose }: {
         </div>
         <div className="relative h-3 rounded-full overflow-visible mb-2"
           style={{ background: 'linear-gradient(to right,#1d4ed8,#9ca3af 50%,#dc2626)' }}>
-          <div
-            className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-[3px] border-emerald-700 rounded-full"
+          <div className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-[3px] border-emerald-700 rounded-full"
             style={{ left: `clamp(0px, calc(${data.pricePos}% - 8px), calc(100% - 16px))` }}
           />
         </div>
@@ -194,85 +185,120 @@ export default function StockResultCard({ data, onClose }: {
         </div>
       </div>
 
-      {/* 6개 지표 2×3 */}
+      {/* ── 6개 지표 2×3 (강조 강화) ── */}
       <div className="grid grid-cols-2 gap-2 mb-3">
 
         {/* 1. 위험 신호 */}
-        <div className="bg-white rounded-xl p-3 border border-emerald-100 text-center">
-          <div className="text-base mb-1">🛡️</div>
-          <div className="text-[10px] text-slate-500 mb-0.5">위험 신호</div>
-          <div className="text-[9px] text-slate-400 mb-2">상폐·정지·관리</div>
-          <div className="text-[15px] font-medium text-emerald-700 mb-1">없음</div>
-          <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">정상</span>
+        <div className="bg-emerald-50 rounded-xl p-3.5 border border-emerald-100">
+          <div className="flex items-center gap-1.5 mb-2">
+            <span style={{ fontSize: 14 }}>🛡️</span>
+            <span className="text-[10px] text-emerald-700 font-medium">위험 신호</span>
+          </div>
+          <div className="text-[26px] font-medium text-emerald-700 leading-none mb-1">없음</div>
+          <div className="text-[10px] text-emerald-600">정상 거래 중</div>
+          <div className="mt-2 text-[9px] text-emerald-500">상폐·정지·관리종목 없음</div>
         </div>
 
         {/* 2. 외국인 수급 */}
-        <div className={`bg-white rounded-xl p-3 border text-center ${fBg}`}>
-          <div className="text-base mb-1">🌐</div>
-          <div className="text-[10px] text-slate-500 mb-0.5">외국인</div>
-          <div className="text-[9px] text-slate-400 mb-2">5일 순매수</div>
-          <div className={`text-[13px] font-medium mb-1 ${fColor}`}>
-            {data.foreignConsecutiveDays >= 3 ? `${data.foreignConsecutiveDays}일↑` :
-             data.foreign5d > 0 ? '매수↑' :
-             data.foreign5d < 0 ? '매도↓' : '-'}
+        <div className={`rounded-xl p-3.5 border ${isForeignBuy ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'}`}>
+          <div className="flex items-center gap-1.5 mb-2">
+            <span style={{ fontSize: 14 }}>🌐</span>
+            <span className={`text-[10px] font-medium ${isForeignBuy ? 'text-red-700' : 'text-blue-700'}`}>외국인</span>
           </div>
-          <div className={`text-[10px] font-medium ${fColor}`}>{fmtAmt(data.foreign5d)}</div>
-        </div>
-
-        {/* 3. 추세 */}
-        <div className={`bg-white rounded-xl p-3 border text-center ${trendBg}`}>
-          <div className="text-base mb-1">📉</div>
-          <div className="text-[10px] text-slate-500 mb-0.5">추세</div>
-          <div className="text-[9px] text-slate-400 mb-2">단기 주가</div>
-          <div className={`text-[13px] font-medium mb-1 ${trendColor}`}>{trendLabel}</div>
-          <div className="text-[10px] text-slate-400">
-            {Math.abs(data.changePercent).toFixed(1)}% 변동
-          </div>
-        </div>
-
-        {/* 4. 거래량 */}
-        <div className={`bg-white rounded-xl p-3 border text-center ${volBg}`}>
-          <div className="text-base mb-1">📊</div>
-          <div className="text-[10px] text-slate-500 mb-0.5">거래량</div>
-          <div className="text-[9px] text-slate-400 mb-2">평균 대비</div>
-          <div className={`text-[13px] font-medium mb-1 ${volColor}`}>
-            {vr >= 150 ? `+${Math.round(vr-100)}%` : vr >= 80 ? '보통' : '감소'}
-          </div>
-          <div className="text-[10px] text-slate-400">{volLabel.split(' ')[0]} {volLabel.split(' ')[1]}</div>
-        </div>
-
-        {/* 5. PER 동종대비 */}
-        <div className="bg-white rounded-xl p-3 border border-slate-100 text-center">
-          <div className="text-base mb-1">💼</div>
-          <div className="text-[10px] text-slate-500 mb-0.5">PER</div>
-          <div className="text-[9px] text-slate-400 mb-2">이익 대비 주가</div>
-          {data.per > 0 ? (
+          {hasForeign ? (
             <>
-              <div className="text-[15px] font-medium text-slate-800 mb-1">{data.per.toFixed(1)}배</div>
-              <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">업종 비교 준비중</span>
+              <div className={`text-[26px] font-medium leading-none mb-1 ${isForeignBuy ? 'text-red-600' : 'text-blue-600'}`}>
+                {fDays >= 3 ? `${fDays}일↑` : isForeignBuy ? '매수↑' : '매도↓'}
+              </div>
+              <div className={`text-[11px] font-medium ${isForeignBuy ? 'text-red-600' : 'text-blue-600'}`}>
+                {fmtAmt(data.foreign5d)}
+              </div>
+              <div className="mt-1 text-[9px] text-slate-400">5일 순매수 금액</div>
             </>
           ) : (
             <>
-              <div className="text-[14px] font-medium text-slate-400 mb-1">적자</div>
-              <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">해당없음</span>
+              <div className="text-[22px] font-medium text-slate-400 leading-none mb-1">-</div>
+              <div className="text-[10px] text-slate-400">데이터 없음</div>
             </>
           )}
         </div>
 
-        {/* 6. PBR 동종대비 */}
-        <div className="bg-white rounded-xl p-3 border border-slate-100 text-center">
-          <div className="text-base mb-1">📈</div>
-          <div className="text-[10px] text-slate-500 mb-0.5">PBR</div>
-          <div className="text-[9px] text-slate-400 mb-2">자산 대비 주가</div>
-          {data.pbr > 0 ? (
+        {/* 3. 추세 */}
+        <div className={`rounded-xl p-3.5 border ${isUpTrend ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'}`}>
+          <div className="flex items-center gap-1.5 mb-2">
+            <span style={{ fontSize: 14 }}>📉</span>
+            <span className={`text-[10px] font-medium ${isUpTrend ? 'text-red-700' : 'text-blue-700'}`}>추세</span>
+          </div>
+          <div className={`text-[22px] font-medium leading-none mb-1 ${isUpTrend ? 'text-red-600' : 'text-blue-600'}`}>
+            {trendLabel}
+          </div>
+          <div className={`text-[13px] font-medium ${isUpTrend ? 'text-red-500' : 'text-blue-500'}`}>
+            {trendArrow} {Math.abs(data.changePercent).toFixed(2)}%
+          </div>
+          <div className="mt-1 text-[9px] text-slate-400">오늘 등락 기준</div>
+        </div>
+
+        {/* 4. 거래량 */}
+        <div className={`rounded-xl p-3.5 border ${isVolHigh ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-200'}`}>
+          <div className="flex items-center gap-1.5 mb-2">
+            <span style={{ fontSize: 14 }}>📊</span>
+            <span className={`text-[10px] font-medium ${isVolHigh ? 'text-amber-700' : 'text-slate-500'}`}>거래량</span>
+          </div>
+          <div className={`text-[26px] font-medium leading-none mb-1 ${isVolHigh ? 'text-amber-600' : 'text-slate-600'}`}>
+            {volText}
+          </div>
+          <div className={`text-[10px] font-medium ${isVolHigh ? 'text-amber-600' : 'text-slate-500'}`}>
+            {volSub}
+          </div>
+          <div className="mt-1 text-[9px] text-slate-400">평균 대비 거래량</div>
+        </div>
+
+        {/* 5. PER */}
+        <div className="bg-white rounded-xl p-3.5 border border-slate-100">
+          <div className="flex items-center gap-1.5 mb-2">
+            <span style={{ fontSize: 14 }}>💼</span>
+            <span className="text-[10px] text-slate-500 font-medium">PER</span>
+          </div>
+          {data.per > 0 ? (
             <>
-              <div className="text-[15px] font-medium text-slate-800 mb-1">{data.pbr.toFixed(1)}배</div>
-              <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">업종 비교 준비중</span>
+              <div className="text-[26px] font-medium text-slate-800 leading-none mb-1">
+                {data.per.toFixed(1)}
+                <span className="text-[14px] text-slate-400 ml-0.5">배</span>
+              </div>
+              <div className="text-[10px] text-slate-500">이익 대비 주가</div>
+              <div className="mt-2 inline-block text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">
+                업종 비교 준비중
+              </div>
             </>
           ) : (
             <>
-              <div className="text-[14px] font-medium text-slate-400 mb-1">-</div>
-              <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">데이터 없음</span>
+              <div className="text-[22px] font-medium text-slate-300 leading-none mb-1">적자</div>
+              <div className="text-[10px] text-slate-400">현재 순손실</div>
+            </>
+          )}
+        </div>
+
+        {/* 6. PBR */}
+        <div className="bg-white rounded-xl p-3.5 border border-slate-100">
+          <div className="flex items-center gap-1.5 mb-2">
+            <span style={{ fontSize: 14 }}>📈</span>
+            <span className="text-[10px] text-slate-500 font-medium">PBR</span>
+          </div>
+          {data.pbr > 0 ? (
+            <>
+              <div className="text-[26px] font-medium text-slate-800 leading-none mb-1">
+                {data.pbr.toFixed(1)}
+                <span className="text-[14px] text-slate-400 ml-0.5">배</span>
+              </div>
+              <div className="text-[10px] text-slate-500">자산 대비 주가</div>
+              <div className="mt-2 inline-block text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">
+                업종 비교 준비중
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-[22px] font-medium text-slate-300 leading-none mb-1">-</div>
+              <div className="text-[10px] text-slate-400">데이터 없음</div>
             </>
           )}
         </div>

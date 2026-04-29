@@ -19,13 +19,6 @@ const PCBannerAd = () => (
   </div>
 );
 
-// 로딩 스켈레톤 — AI 분석 중 단계별 멘트
-const loadingMessages = [
-  '데이터 수집 중...',
-  'AI가 수급 분석하는 중...',
-  'AI 브리핑 완성 중...',
-];
-
 const ResultSkeleton = ({ name }: { name: string }) => (
   <div className="animate-pulse mb-4">
     <div className="bg-emerald-900/40 rounded-2xl h-32 mb-3"></div>
@@ -39,14 +32,11 @@ const ResultSkeleton = ({ name }: { name: string }) => (
     </div>
     <div className="flex items-center justify-center gap-2 py-4">
       <div className="w-4 h-4 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin"></div>
-      <span className="text-[12px] text-slate-500">
-        {name} AI 분석 중...
-      </span>
+      <span className="text-[12px] text-slate-500">{name} AI 분석 중...</span>
     </div>
   </div>
 );
 
-// 인기 종목 (클릭 가능)
 const POPULAR = [
   { name: '삼성전자', code: '005930' },
   { name: 'SK하이닉스', code: '000660' },
@@ -59,8 +49,7 @@ export default function HomePage() {
   const [result, setResult]     = useState<any>(null);
   const [error, setError]       = useState('');
   const [selectedName, setSelectedName] = useState('');
-  const searchRef  = useRef<HTMLDivElement>(null);
-  const resultRef  = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLDivElement>(null);
 
   const handleSelect = async (code: string, name: string) => {
     setSelectedName(name);
@@ -68,8 +57,7 @@ export default function HomePage() {
     setResult(null);
     setError('');
 
-    // 결과가 검색창 바로 아래 붙어서 나오도록
-    // 스크롤을 검색창 위치로 (결과가 바로 아래 보임)
+    // 검색창 위치로 스크롤 (결과가 검색창 바로 아래 보임)
     setTimeout(() => {
       searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }, 50);
@@ -98,33 +86,26 @@ export default function HomePage() {
   return (
     <div className="min-h-screen">
 
-      {/* ── 히어로 배너 ── */}
+      {/* ── 히어로 배너 (결과 없을 때만) ── */}
       {!showResult && (
         <div className="bg-emerald-900 rounded-2xl p-5 mb-4 relative overflow-hidden">
-          {/* 배경 원형 장식 */}
           <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/2"></div>
           <div className="absolute bottom-0 left-0 w-24 h-24 rounded-full bg-white/3 translate-y-1/2 -translate-x-1/2"></div>
-
           <div className="relative">
-            {/* 뱃지 */}
             <div className="inline-flex items-center gap-1.5 bg-amber-400/20 border border-amber-400/30 rounded-full px-3 py-1 mb-3">
               <div className="w-1.5 h-1.5 rounded-full bg-amber-400"></div>
               <span className="text-[10px] font-medium text-amber-300">매수 전 1분 체크</span>
             </div>
-
-            {/* 메인 타이틀 */}
             <h1 className="text-[24px] font-medium text-white leading-tight mb-3">
               이 종목<br />
               <span className="text-emerald-300">사도 될까?</span>
             </h1>
-
-            {/* 포인트 3개 */}
             <div className="flex flex-col gap-1.5">
               {[
-                { dot: true,  text: 'AI 브리핑 — 수급·거래량·밸류 3줄 요약' },
-                { dot: true,  text: '위험신호 자동 감지 — 2,613개 종목' },
-                { dot: true,  text: '30초 안에 핵심 확인' },
-              ].map(({ text }) => (
+                'AI 브리핑 — 수급·거래량·밸류 3줄 요약',
+                '위험신호 자동 감지 — 2,613개 종목',
+                '30초 안에 핵심 확인',
+              ].map(text => (
                 <div key={text} className="flex items-center gap-2">
                   <div className="w-1 h-1 rounded-full bg-amber-400 flex-shrink-0"></div>
                   <span className="text-[11px] text-emerald-200">{text}</span>
@@ -135,7 +116,24 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── 광고 (히어로 아래) ── */}
+      {/* ── 결과 모드일 때 미니 헤더 ── */}
+      {showResult && (
+        <div className="flex items-center justify-between mb-3 px-1">
+          <div className="flex items-center gap-2">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-600"></div>
+            <span className="text-[11px] font-medium text-emerald-700">1MINSTOCK</span>
+            <span className="text-[11px] text-slate-400">매수 전 1분 체크</span>
+          </div>
+          <button
+            onClick={handleClose}
+            className="text-[11px] text-slate-400 hover:text-slate-600 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors"
+          >
+            ✕ 초기화
+          </button>
+        </div>
+      )}
+
+      {/* ── 광고 (히어로 아래, 결과 없을 때만) ── */}
       {!showResult && (
         <>
           <MobileAd />
@@ -143,36 +141,33 @@ export default function HomePage() {
         </>
       )}
 
-      {/* ── 검색창 (결과 바로 위) ── */}
+      {/* ── 검색창 (항상 표시) ── */}
       <div ref={searchRef}>
         <SearchBar onSelect={handleSelect} selectedName={selectedName} />
       </div>
 
       {/* ── 결과 영역 (검색창 바로 아래) ── */}
-      <div ref={resultRef}>
-        {loading && <ResultSkeleton name={selectedName} />}
+      {loading && <ResultSkeleton name={selectedName} />}
 
-        {!loading && error && (
-          <div className="bg-red-50 border border-red-100 rounded-2xl p-4 mb-4 text-center">
-            <div className="text-[13px] font-medium text-red-700 mb-1">조회 실패</div>
-            <div className="text-[11px] text-red-400 mb-2">{error}</div>
-            <button onClick={handleClose} className="text-[11px] text-red-500 underline">닫기</button>
-          </div>
-        )}
+      {!loading && error && (
+        <div className="bg-red-50 border border-red-100 rounded-2xl p-4 mb-4 text-center">
+          <div className="text-[13px] font-medium text-red-700 mb-1">조회 실패</div>
+          <div className="text-[11px] text-red-400 mb-2">{error}</div>
+          <button onClick={handleClose} className="text-[11px] text-red-500 underline">닫기</button>
+        </div>
+      )}
 
-        {!loading && result && (
-          <>
-            <StockResultCard data={result} onClose={handleClose} />
-            <MobileAd />
-            <PCBannerAd />
-          </>
-        )}
-      </div>
+      {!loading && result && (
+        <>
+          <StockResultCard data={result} onClose={handleClose} />
+          <MobileAd />
+          <PCBannerAd />
+        </>
+      )}
 
       {/* ── 결과 없을 때 기본 화면 ── */}
       {!showResult && (
         <>
-          {/* 인기 종목 — 클릭하면 바로 검색 */}
           <div className="mb-4">
             <div className="text-[11px] font-medium text-slate-400 mb-2 px-1">많이 찾는 종목</div>
             <div className="grid grid-cols-2 gap-2">
@@ -192,18 +187,15 @@ export default function HomePage() {
             </div>
           </div>
 
-          {/* 시장 현황 */}
           <div className="mb-4">
             <div className="text-[11px] font-medium text-slate-400 mb-2 px-1">시장 현황</div>
             <MarketIndices />
           </div>
 
-          {/* 하단 광고 */}
           <MobileAd />
         </>
       )}
 
-      {/* 면책 조항 */}
       <div className="text-[10px] text-slate-400 text-center py-4 leading-relaxed">
         본 정보는 참고용이며, 투자 자문이 아닙니다.<br/>
         모든 투자 판단과 결과는 본인 책임입니다.
