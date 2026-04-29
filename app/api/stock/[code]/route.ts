@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { fetchNaverStock } from '@/lib/naverFinance';
 import { fetchInvestorTrading } from '@/lib/investorTrading';
 import { fetchAIBriefing } from '@/lib/aiSummary';
+import { comparePer, comparePbr } from '@/lib/data/industries';
 
 export const dynamic = 'force-dynamic';
 
@@ -89,6 +90,8 @@ export async function GET(
       individual5d: p5d,
       foreignConsecutiveDays: fDays,
       institutionConsecutiveDays: iDays,
+      perCompare: comparePer(naverData.per, code),
+      pbrCompare: comparePbr(naverData.pbr, code),
       aiBriefing,
       latestNews: naverData.latestNews,
       riskSignal: naverData.riskSignal,

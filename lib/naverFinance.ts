@@ -207,43 +207,30 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
       }
     } catch {}
 
-    // ── 위험신호 파싱 ──
-    // 네이버 integration API의 stockIssueKind, issueInfo 등에서 파싱
+    // ── 위험신호: KRX 공식 데이터 기반 ──
+    // public/data/risk-stocks.json (GitHub Actions가 매일 자동 업데이트)
     const riskItems: NaverStockData['riskSignal']['items'] = [];
-
-    // 방법 1: stockIssueKind 필드
-    const issueKind = data?.stockIssueKind?.code || data?.stockIssueKind || '';
-    const issueKindName = data?.stockIssueKind?.name || '';
-    if (issueKind) {
-      const kindMap: Record<string, { label: string; type: string; desc: string }> = {
-        'HALT':        { label: '거래정지', type: '거래정지', desc: '현재 거래가 정지된 종목입니다' },
-        'MANAGING':    { label: '관리종목', type: '관리종목', desc: '거래소 관리종목으로 지정된 종목입니다' },
-        'CAUTION':     { label: '투자주의', type: '환기종목', desc: '투자자 주의가 필요한 종목입니다' },
-        'WARNING':     { label: '투자경고', type: '환기종목', desc: '투자경고 종목으로 지정되었습니다' },
-        'DANGER':      { label: '투자위험', type: '환기종목', desc: '투자위험 종목으로 지정되었습니다' },
-        'SUPERVISION': { label: '감리종목', type: '기타', desc: '감리 대상 종목입니다' },
-      };
-      const matched = kindMap[issueKind.toUpperCase()];
-      if (matched) {
-        riskItems.push({ type: matched.type, label: matched.label, description: matched.desc });
-      } else if (issueKindName && issueKindName !== '정상') {
-        riskItems.push({ type: '기타', label: issueKindName, description: `${issueKindName} 종목입니다` });
+    try {
+      const riskRes = await axios.get(
+        `${process.env.NEXT_PUBLIC_SITE_URL || 'https://1minstock.com'}/data/risk-stocks.json`,
+        { timeout: 2000 }
+      );
+      const riskData = riskRes.data;
+      const stockRisk = riskData?.stocks?.[code];
+      if (stockRisk && Array.isArray(stockRisk.details)) {
+        stockRisk.details.forEach((d: any) => {
+          riskItems.push({
+            type: d.type || '기타',
+            label: d.label || d.type || '위험',
+            description: d.description || '',
+          });
+        });
       }
-    }
-
-    // 방법 2: totalInfos에서 위험 관련 키 파싱
-    const tradingStatus = getInfo('tradingStatus') || getInfo('haltYn') || '';
-    if (tradingStatus === 'Y' || tradingStatus === 'HALT') {
-      if (!riskItems.find(r => r.type === '거래정지')) {
-        riskItems.push({ type: '거래정지', label: '거래정지', description: '현재 거래가 정지된 종목입니다' });
-      }
-    }
-
-    // 방법 3: data 루트에 직접 있는 경우
-    const managingYn = data?.managingYn || data?.isManaging;
-    if (managingYn === 'Y' || managingYn === true) {
-      if (!riskItems.find(r => r.type === '관리종목')) {
-        riskItems.push({ type: '관리종목', label: '관리종목', description: '거래소 관리종목으로 지정된 종목입니다' });
+    } catch (e) {
+      // KRX 데이터 못 읽으면 일단 빈 배열 (네이버 보조)
+      const issueKindName = data?.stockIssueKind?.name || '';
+      if (issueKindName && issueKindName !== '정상' && issueKindName !== '') {
+        riskItems.push({ type: '기타', label: issueKindName, description: `${issueKindName} 종목` });
       }
     }
 

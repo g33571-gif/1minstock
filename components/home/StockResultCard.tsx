@@ -1,5 +1,14 @@
 'use client';
 
+interface ValuationCompare {
+  industryName: string;
+  myValue: number;
+  industryAvg: number;
+  diffPercent: number;
+  label: '저평가' | '적정' | '고평가';
+  color: 'blue' | 'gray' | 'red';
+}
+
 interface StockResult {
   code: string; name: string; market: string;
   price: number; change: number; changePercent: number;
@@ -10,6 +19,8 @@ interface StockResult {
   foreignOwnership: number; institutionOwnership: number; individualOwnership: number;
   foreign5d: number; institution5d: number; individual5d: number;
   foreignConsecutiveDays: number; institutionConsecutiveDays: number;
+  perCompare: ValuationCompare | null;
+  pbrCompare: ValuationCompare | null;
   aiBriefing: { signal1: string; signal2: string; signal3: string } | null;
   latestNews: { title: string; time: string; url: string } | null;
   riskSignal: {
@@ -29,25 +40,44 @@ function fmtAmt(n: number) {
   return n !== 0 ? `${sign}${abs.toLocaleString('ko-KR')}` : '-';
 }
 
-// 카드 공통 컨테이너
-function MetricCard({
-  emoji, label, mainValue, mainColor, subValue, subColor, bg, border
-}: {
-  emoji: string; label: string;
-  mainValue: string; mainColor: string;
-  subValue: string; subColor?: string;
-  bg: string; border: string;
+// 수급 막대 — 좌측 매도(파랑) | 중앙 0 | 우측 매수(빨강)
+function SupplyBar({ label, days, amount, max }: {
+  label: string; days: number; amount: number; max: number;
 }) {
+  const isBuy = amount >= 0;
+  const pct = max > 0 ? Math.min(100, Math.abs(amount) / max * 100) : 0;
+  const color = isBuy ? '#dc2626' : '#1d4ed8';
+  const bgColor = isBuy ? 'bg-red-50' : 'bg-blue-50';
+  const txtColor = isBuy ? 'text-red-700' : 'text-blue-700';
+
   return (
-    <div className={`rounded-xl p-3.5 border ${bg} ${border}`}>
-      <div className="flex items-center gap-1.5 mb-2.5">
-        <span style={{ fontSize: 13 }}>{emoji}</span>
-        <span className={`text-[10px] font-medium ${subColor || 'text-slate-500'}`}>{label}</span>
+    <div className="mb-2.5">
+      <div className="flex justify-between items-center mb-1.5">
+        <div className="flex items-center gap-1.5">
+          <span className="text-[12px] font-medium text-slate-800 min-w-[40px]">{label}</span>
+          {days > 0 && amount !== 0 && (
+            <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${bgColor} ${txtColor}`}>
+              {days}일{isBuy ? '↑' : '↓'}
+            </span>
+          )}
+        </div>
+        <span className={`text-[11px] font-medium`} style={{ color: amount === 0 ? '#94a3b8' : color }}>
+          {amount === 0 ? '-' : fmtAmt(amount)}
+        </span>
       </div>
-      <div className={`text-[26px] font-medium leading-none mb-1.5 ${mainColor}`}>
-        {mainValue}
+      <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
+        <div className="absolute top-0 left-1/2 w-px h-full bg-slate-300"></div>
+        {amount !== 0 && (
+          <div
+            className="absolute top-0 h-full rounded-full"
+            style={{
+              backgroundColor: color,
+              width: `${pct / 2}%`,
+              [isBuy ? 'left' : 'right']: '50%',
+            }}
+          />
+        )}
       </div>
-      <div className={`text-[10px] ${subColor || 'text-slate-400'}`}>{subValue}</div>
     </div>
   );
 }
@@ -63,59 +93,13 @@ export default function StockResultCard({ data, onClose }: {
     data.pricePos <= 60 ? '중간 구간' :
     data.pricePos <= 80 ? '중간~고점' : '고점 근처';
 
-  // 외국인 순매수
-  const isForeignBuy   = data.foreign5d >= 0;
-  const hasForeign     = data.foreign5d !== 0;
-  const fDays          = data.foreignConsecutiveDays;
-  const foreignMainVal = hasForeign
-    ? (fDays >= 3 ? `${fDays}일↑` : isForeignBuy ? '매수↑' : '매도↓')
-    : '-';
-  const foreignSubVal  = hasForeign ? fmtAmt(data.foreign5d) + ' (5일)' : '데이터 없음';
-
-  // 외국인 보유율
-  const fPct = data.foreignOwnership;
-  const fPctColor = fPct >= 50 ? 'text-red-600' : fPct >= 30 ? 'text-slate-700' : 'text-blue-600';
-
-  // PER
-  const hasPer = data.per > 0;
-  const perVal = hasPer ? `${data.per.toFixed(1)}` : data.per === 0 ? '-' : '적자';
-  const perColor = hasPer
-    ? (data.per < 10 ? 'text-blue-600' : data.per < 25 ? 'text-slate-800' : 'text-red-600')
-    : 'text-slate-300';
-
-  // PBR
-  const hasPbr = data.pbr > 0;
-  const pbrVal = hasPbr ? `${data.pbr.toFixed(1)}` : '-';
-  const pbrColor = hasPbr
-    ? (data.pbr < 1 ? 'text-blue-600' : data.pbr < 3 ? 'text-slate-800' : 'text-red-600')
-    : 'text-slate-300';
-
-  // 배당률
-  const hasDividend = data.dividendYield > 0;
-  const divVal = hasDividend ? `${data.dividendYield.toFixed(1)}%` : '-';
-  const divColor = hasDividend
-    ? (data.dividendYield >= 4 ? 'text-red-600' : data.dividendYield >= 2 ? 'text-emerald-700' : 'text-slate-600')
-    : 'text-slate-300';
-  const divSub = hasDividend
-    ? (data.dividendYield >= 4 ? '고배당 주목' : data.dividendYield >= 2 ? '연간 배당' : '연간 배당')
-    : '무배당';
-
-  // 거래량 (오늘 거래량, volumeRatio 없으면 주수만)
-  const vr = data.volumeRatio || 0;
-  const hasVol = data.volume > 0;
-  const volMainVal = vr >= 150 ? `+${Math.round(vr-100)}%`
-    : vr > 0 && vr < 80 ? `${Math.round(vr)}%`
-    : hasVol ? `${(data.volume / 1000).toFixed(0)}K` : '-';
-  const volSub = vr >= 300 ? '폭발적 급증'
-    : vr >= 200 ? '거래량 급증'
-    : vr >= 150 ? '평균 대비 증가'
-    : vr > 0 ? '평균 수준'
-    : hasVol ? '오늘 거래량' : '데이터 없음';
-  const volColor = vr >= 150 ? 'text-amber-600'
-    : vr > 0 ? 'text-slate-600'
-    : 'text-slate-500';
-  const volBg = vr >= 150 ? 'bg-amber-50' : 'bg-slate-50';
-  const volBorder = vr >= 150 ? 'border-amber-100' : 'border-slate-200';
+  // 수급 그래프 최댓값
+  const supplyMax = Math.max(
+    Math.abs(data.foreign5d),
+    Math.abs(data.institution5d),
+    Math.abs(data.individual5d),
+    1
+  );
 
   return (
     <div style={{ animation: 'slideDown 0.25s ease' }}>
@@ -145,7 +129,7 @@ export default function StockResultCard({ data, onClose }: {
           {[
             { label: '시가', val: fmt(data.openToday || data.price), color: 'text-white' },
             { label: '고가', val: fmt(data.highToday || data.price), color: 'text-red-300' },
-            { label: '저가', val: fmt(data.lowToday || data.price), color: 'text-blue-300' },
+            { label: '저가', val: fmt(data.lowToday  || data.price), color: 'text-blue-300' },
             { label: '시총', val: data.marketCap, color: 'text-white' },
           ].map(({ label, val, color }) => (
             <div key={label}>
@@ -194,7 +178,32 @@ export default function StockResultCard({ data, onClose }: {
         </p>
       </div>
 
-      {/* 52주 가격위치 */}
+      {/* 위험신호 (있을 때만) */}
+      {data.riskSignal?.hasRisk && (
+        <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 mb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-7 h-7 bg-red-600 rounded-full flex items-center justify-center flex-shrink-0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div>
+              <div className="text-[13px] font-medium text-red-900">위험 신호 {data.riskSignal.items.length}건</div>
+              <div className="text-[10px] text-red-700">투자에 신중한 검토가 필요합니다</div>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            {data.riskSignal.items.map((r, i) => (
+              <div key={i} className="flex items-start gap-2 bg-white rounded-lg p-2.5 border-l-[3px] border-red-600">
+                <span className="text-[10px] px-2 py-0.5 bg-red-600 text-white rounded-full font-medium flex-shrink-0">{r.label}</span>
+                <span className="text-[11px] text-red-900 leading-snug">{r.description}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* 1년 가격 위치 */}
       <div className="bg-white rounded-2xl p-4 mb-3 border border-slate-100">
         <div className="text-[12px] font-medium text-slate-800 mb-2 flex items-center gap-1.5">
           <span>📊</span> 1년 가격 위치
@@ -223,137 +232,154 @@ export default function StockResultCard({ data, onClose }: {
         </div>
       </div>
 
-      {/* ── 6개 지표 2×3 (신뢰성 있는 데이터만) ── */}
-      {/* 위험신호 배너 (있을 때만 표시) */}
-      {data.riskSignal?.hasRisk && (
-        <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 mb-3">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-7 h-7 bg-red-600 rounded-full flex items-center justify-center flex-shrink-0">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-              </svg>
-            </div>
-            <div>
-              <div className="text-[13px] font-medium text-red-900">위험 신호 {data.riskSignal.items.length}건</div>
-              <div className="text-[10px] text-red-700">투자에 신중한 검토가 필요합니다</div>
-            </div>
+      {/* 5일 수급 막대 그래프 */}
+      <div className="bg-white rounded-2xl p-4 mb-3 border border-slate-100">
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-[12px] font-medium text-slate-800 flex items-center gap-1.5">
+            <span>👥</span> 5일 수급 동향
           </div>
-          <div className="space-y-1.5">
-            {data.riskSignal.items.map((r, i) => (
-              <div key={i} className="flex items-start gap-2 bg-white rounded-lg p-2.5 border-l-[3px] border-red-600">
-                <span className="text-[10px] px-2 py-0.5 bg-red-600 text-white rounded-full font-medium flex-shrink-0">{r.label}</span>
-                <span className="text-[11px] text-red-900 leading-snug">{r.description}</span>
-              </div>
-            ))}
-          </div>
+          <span className="text-[9px] text-slate-400">빨강=매수 · 파랑=매도</span>
         </div>
-      )}
+        <SupplyBar label="외국인" days={data.foreignConsecutiveDays} amount={data.foreign5d} max={supplyMax} />
+        <SupplyBar label="기관"   days={data.institutionConsecutiveDays} amount={data.institution5d} max={supplyMax} />
+        <SupplyBar label="개인"   days={0} amount={data.individual5d} max={supplyMax} />
+      </div>
 
+      {/* 핵심 지표 */}
       <div className="text-[11px] font-medium text-slate-400 mb-2 px-0.5">핵심 지표</div>
       <div className="grid grid-cols-2 gap-2 mb-3">
 
-        {/* 1. 외국인 순매수 */}
-        <div className={`rounded-xl p-3.5 border ${isForeignBuy ? 'bg-red-50 border-red-100' : hasForeign ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-200'}`}>
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <span style={{ fontSize: 13 }}>🌐</span>
-            <span className={`text-[10px] font-medium ${isForeignBuy && hasForeign ? 'text-red-700' : hasForeign ? 'text-blue-700' : 'text-slate-400'}`}>외국인 순매수</span>
-          </div>
-          <div className={`text-[26px] font-medium leading-none mb-1.5 ${hasForeign ? (isForeignBuy ? 'text-red-600' : 'text-blue-600') : 'text-slate-300'}`}>
-            {foreignMainVal}
-          </div>
-          <div className={`text-[10px] font-medium ${hasForeign ? (isForeignBuy ? 'text-red-500' : 'text-blue-500') : 'text-slate-400'}`}>
-            {foreignSubVal}
-          </div>
-        </div>
-
-        {/* 2. 외국인 보유율 */}
+        {/* PER 동종업종 비교 */}
         <div className="bg-white rounded-xl p-3.5 border border-slate-100">
           <div className="flex items-center gap-1.5 mb-2.5">
-            <span style={{ fontSize: 13 }}>👥</span>
-            <span className="text-[10px] font-medium text-slate-500">외국인 보유율</span>
+            <span style={{ fontSize: 13 }}>💼</span>
+            <span className="text-[10px] text-slate-500 font-medium">PER</span>
           </div>
-          {fPct > 0 ? (
+          {data.per > 0 ? (
             <>
-              <div className={`text-[26px] font-medium leading-none mb-1.5 ${fPctColor}`}>
-                {fPct.toFixed(1)}
-                <span className="text-[14px] text-slate-400 ml-0.5">%</span>
+              <div className="flex items-baseline gap-1 mb-1.5">
+                <span className="text-[26px] font-medium text-slate-800 leading-none">{data.per.toFixed(1)}</span>
+                <span className="text-[13px] text-slate-400">배</span>
               </div>
-              <div className="text-[10px] text-slate-400">
-                {fPct >= 50 ? '외국인 과반 보유' : fPct >= 30 ? '외국인 비중 높음' : '외국인 비중 낮음'}
-              </div>
+              {data.perCompare ? (
+                <>
+                  <div className="text-[10px] text-slate-500 mb-1">
+                    {data.perCompare.industryName} 평균 {data.perCompare.industryAvg.toFixed(1)}배
+                  </div>
+                  <span className={`text-[9px] font-medium px-2 py-0.5 rounded-full ${
+                    data.perCompare.color === 'blue' ? 'bg-blue-50 text-blue-700' :
+                    data.perCompare.color === 'red' ? 'bg-red-50 text-red-700' :
+                    'bg-slate-100 text-slate-600'
+                  }`}>
+                    {data.perCompare.diffPercent > 0 ? '+' : ''}{data.perCompare.diffPercent}% {data.perCompare.label}
+                  </span>
+                </>
+              ) : (
+                <div className="text-[10px] text-slate-500">이익 대비 주가</div>
+              )}
             </>
           ) : (
             <>
-              <div className="text-[24px] font-medium text-slate-300 leading-none mb-1.5">-</div>
+              <div className="text-[22px] font-medium text-slate-300 leading-none mb-1.5">적자</div>
+              <div className="text-[10px] text-slate-400">현재 순손실 상태</div>
+            </>
+          )}
+        </div>
+
+        {/* PBR 동종업종 비교 */}
+        <div className="bg-white rounded-xl p-3.5 border border-slate-100">
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <span style={{ fontSize: 13 }}>📈</span>
+            <span className="text-[10px] text-slate-500 font-medium">PBR</span>
+          </div>
+          {data.pbr > 0 ? (
+            <>
+              <div className="flex items-baseline gap-1 mb-1.5">
+                <span className="text-[26px] font-medium text-slate-800 leading-none">{data.pbr.toFixed(1)}</span>
+                <span className="text-[13px] text-slate-400">배</span>
+              </div>
+              {data.pbrCompare ? (
+                <>
+                  <div className="text-[10px] text-slate-500 mb-1">
+                    {data.pbrCompare.industryName} 평균 {data.pbrCompare.industryAvg.toFixed(1)}배
+                  </div>
+                  <span className={`text-[9px] font-medium px-2 py-0.5 rounded-full ${
+                    data.pbrCompare.color === 'blue' ? 'bg-blue-50 text-blue-700' :
+                    data.pbrCompare.color === 'red' ? 'bg-red-50 text-red-700' :
+                    'bg-slate-100 text-slate-600'
+                  }`}>
+                    {data.pbrCompare.diffPercent > 0 ? '+' : ''}{data.pbrCompare.diffPercent}% {data.pbrCompare.label}
+                  </span>
+                </>
+              ) : (
+                <div className="text-[10px] text-slate-500">자산 대비 주가</div>
+              )}
+            </>
+          ) : (
+            <>
+              <div className="text-[22px] font-medium text-slate-300 leading-none mb-1.5">-</div>
               <div className="text-[10px] text-slate-400">데이터 없음</div>
             </>
           )}
         </div>
 
-        {/* 3. PER */}
+        {/* 외국인 보유율 */}
         <div className="bg-white rounded-xl p-3.5 border border-slate-100">
           <div className="flex items-center gap-1.5 mb-2.5">
-            <span style={{ fontSize: 13 }}>💼</span>
-            <span className="text-[10px] font-medium text-slate-500">PER</span>
+            <span style={{ fontSize: 13 }}>🌐</span>
+            <span className="text-[10px] text-slate-500 font-medium">외국인 보유율</span>
           </div>
-          <div className={`leading-none mb-1.5 ${hasPer ? 'text-[26px] font-medium ' + perColor : 'text-[22px] font-medium text-slate-300'}`}>
-            {perVal}
-            {hasPer && <span className="text-[14px] text-slate-400 ml-0.5">배</span>}
-          </div>
-          <div className="text-[10px] text-slate-400">
-            {hasPer
-              ? data.per < 10 ? '이익 대비 저평가 구간'
-              : data.per < 25 ? '이익 대비 적정 수준'
-              : '이익 대비 고평가 구간'
-              : data.per === 0 ? '데이터 없음' : '현재 적자 상태'}
-          </div>
+          {data.foreignOwnership > 0 ? (
+            <>
+              <div className="flex items-baseline gap-1 mb-1.5">
+                <span className={`text-[26px] font-medium leading-none ${
+                  data.foreignOwnership >= 50 ? 'text-red-600' :
+                  data.foreignOwnership >= 30 ? 'text-slate-700' : 'text-slate-600'
+                }`}>{data.foreignOwnership.toFixed(1)}</span>
+                <span className="text-[13px] text-slate-400">%</span>
+              </div>
+              <div className="text-[10px] text-slate-500">
+                {data.foreignOwnership >= 50 ? '외국인 과반 보유' :
+                 data.foreignOwnership >= 30 ? '외국인 비중 높음' : '외국인 비중 낮음'}
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="text-[22px] font-medium text-slate-300 leading-none mb-1.5">-</div>
+              <div className="text-[10px] text-slate-400">데이터 없음</div>
+            </>
+          )}
         </div>
 
-        {/* 4. PBR */}
-        <div className="bg-white rounded-xl p-3.5 border border-slate-100">
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <span style={{ fontSize: 13 }}>📈</span>
-            <span className="text-[10px] font-medium text-slate-500">PBR</span>
+        {/* 배당률 */}
+        {data.dividendYield > 0 ? (
+          <div className="bg-emerald-50 rounded-xl p-3.5 border border-emerald-100">
+            <div className="flex items-center gap-1.5 mb-2.5">
+              <span style={{ fontSize: 13 }}>💰</span>
+              <span className="text-[10px] text-emerald-700 font-medium">배당률</span>
+            </div>
+            <div className="flex items-baseline gap-1 mb-1.5">
+              <span className={`text-[26px] font-medium leading-none ${
+                data.dividendYield >= 4 ? 'text-red-600' :
+                data.dividendYield >= 2 ? 'text-emerald-700' : 'text-slate-600'
+              }`}>{data.dividendYield.toFixed(1)}</span>
+              <span className="text-[13px] text-emerald-600">%</span>
+            </div>
+            <div className="text-[10px] text-emerald-600">
+              {data.dividendYield >= 4 ? '고배당 주목' :
+               data.dividendYield >= 2 ? '적정 배당' : '낮은 배당'}
+            </div>
           </div>
-          <div className={`leading-none mb-1.5 ${hasPbr ? 'text-[26px] font-medium ' + pbrColor : 'text-[22px] font-medium text-slate-300'}`}>
-            {pbrVal}
-            {hasPbr && <span className="text-[14px] text-slate-400 ml-0.5">배</span>}
+        ) : (
+          <div className="bg-slate-50 rounded-xl p-3.5 border border-slate-200">
+            <div className="flex items-center gap-1.5 mb-2.5">
+              <span style={{ fontSize: 13 }}>💰</span>
+              <span className="text-[10px] text-slate-400 font-medium">배당률</span>
+            </div>
+            <div className="text-[22px] font-medium text-slate-300 leading-none mb-1.5">-</div>
+            <div className="text-[10px] text-slate-400">무배당</div>
           </div>
-          <div className="text-[10px] text-slate-400">
-            {hasPbr
-              ? data.pbr < 1 ? '순자산보다 낮은 주가'
-              : data.pbr < 3 ? '자산 대비 적정 수준'
-              : '자산 대비 고평가 구간'
-              : '데이터 없음'}
-          </div>
-        </div>
-
-        {/* 5. 배당률 */}
-        <div className={`rounded-xl p-3.5 border ${hasDividend ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-200'}`}>
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <span style={{ fontSize: 13 }}>💰</span>
-            <span className={`text-[10px] font-medium ${hasDividend ? 'text-emerald-700' : 'text-slate-400'}`}>배당률</span>
-          </div>
-          <div className={`text-[26px] font-medium leading-none mb-1.5 ${hasDividend ? divColor : 'text-slate-300'}`}>
-            {divVal}
-          </div>
-          <div className={`text-[10px] ${hasDividend ? 'text-emerald-600' : 'text-slate-400'}`}>{divSub}</div>
-        </div>
-
-        {/* 6. 거래량 */}
-        <div className={`rounded-xl p-3.5 border ${volBg} ${volBorder}`}>
-          <div className="flex items-center gap-1.5 mb-2.5">
-            <span style={{ fontSize: 13 }}>📊</span>
-            <span className={`text-[10px] font-medium ${vr >= 150 ? 'text-amber-700' : 'text-slate-500'}`}>거래량</span>
-          </div>
-          <div className={`text-[26px] font-medium leading-none mb-1.5 ${volColor}`}>
-            {volMainVal}
-          </div>
-          <div className={`text-[10px] ${vr >= 150 ? 'text-amber-600' : 'text-slate-400'}`}>
-            {volSub}
-          </div>
-        </div>
-
+        )}
       </div>
 
       {/* 최신 뉴스 */}
