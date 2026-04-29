@@ -28,8 +28,16 @@ export interface NaverStockData {
     buyCount: number;
     neutralCount: number;
     sellCount: number;
-    targetPrice: number;      // 평균 목표가 (원)
-    targetPriceLow: number;   // 하향 목표가
+    targetPrice: number;
+    targetPriceLow: number;
+  } | null;
+  // 거래량 비율 (평균 대비 %, 150 = 평균 대비 +50%)
+  volumeRatioCalc: number;
+  // 최신 뉴스 1건
+  latestNews: {
+    title: string;
+    time: string;
+    url: string;
   } | null;
 }
 
@@ -158,6 +166,30 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
       } catch {}
     }
 
+    // 거래량 비율 (평균 대비)
+    const avgVol = parseInt2(getInfo('averageVolume') || '0');
+    const volumeRatioCalc = avgVol > 0 && volume > 0
+      ? Math.round(volume / avgVol * 100)
+      : 100;
+
+    // 최신 뉴스 1건
+    let latestNews: NaverStockData['latestNews'] = null;
+    try {
+      const newsRes = await axios.get(
+        `https://m.stock.naver.com/api/stock/${code}/news?pageSize=1&page=1`,
+        { headers, timeout: 3000 }
+      );
+      const items = newsRes.data?.result || newsRes.data || [];
+      const first = Array.isArray(items) ? items[0] : null;
+      if (first?.title) {
+        latestNews = {
+          title: first.title,
+          time: first.wdate || first.date || '',
+          url: first.url || `https://finance.naver.com/item/news.naver?code=${code}`,
+        };
+      }
+    } catch {}
+
     return {
       code, name, market,
       price: price || 0,
@@ -173,6 +205,8 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
       highToday, lowToday, openToday,
       volume,
       consensus,
+      volumeRatioCalc,
+      latestNews,
     };
   } catch (error) {
     console.error(`[NaverFinance] Error ${code}:`, error);

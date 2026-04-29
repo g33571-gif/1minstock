@@ -3,7 +3,7 @@ import { Metadata } from 'next';
 import { fetchNaverStock } from '@/lib/naverFinance';
 import { fetchDartCompany } from '@/lib/dart';
 import { fetchInvestorTrading } from '@/lib/investorTrading';
-import { fetchAISummary } from '@/lib/aiSummary';
+import { fetchAIBriefing } from '@/lib/aiSummary';
 
 interface PageProps {
   params: { stockCode: string };
@@ -108,7 +108,7 @@ export default async function StockDetailPage({ params }: PageProps) {
     : 50;
 
   // AI 요약
-  const aiSummary = await fetchAISummary({
+  const aiBriefing = await fetchAIBriefing({
     name: naverData.name,
     price: naverData.price,
     changePercent: naverData.changePercent,
@@ -124,6 +124,8 @@ export default async function StockDetailPage({ params }: PageProps) {
     marketCap: naverData.marketCap,
     consensusTargetPrice: cons?.targetPrice,
     consensusBuyPct: buyPct,
+    volume: naverData.volume,
+    volumeRatio: naverData.volumeRatioCalc,
   });
 
   const isUp = naverData.changePercent >= 0;
@@ -167,19 +169,69 @@ export default async function StockDetailPage({ params }: PageProps) {
         </div>
       </div>
 
-      {/* ── 2. AI 분석 (히어로) ── */}
+      {/* ── 2. AI 브리핑 (히어로) ── */}
       <div className="bg-emerald-900 rounded-2xl p-4 mb-3 border-2 border-amber-400">
         <div className="flex items-center gap-2 mb-3">
           <div className="bg-amber-400 rounded-md px-2.5 py-1 flex items-center gap-1.5 flex-shrink-0">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-900"></div>
-            <span className="text-[10px] font-semibold text-emerald-900">AI 분석</span>
+            <span className="text-[10px] font-semibold text-emerald-900">AI 브리핑</span>
           </div>
           <span className="text-[9px] text-emerald-300">공개 데이터 자동 요약 · 참고용</span>
         </div>
-        <p className="text-[14px] leading-relaxed text-white">
-          {aiSummary || `${naverData.market} 상장, 현재가 ${fmtPrice(naverData.price)}원${naverData.per > 0 ? `, PER ${naverData.per.toFixed(1)}배` : ''}`}
-        </p>
-        <p className="text-[9px] text-emerald-400/60 mt-2">
+
+        {/* 3줄 시그널 */}
+        <div className="space-y-2.5 mb-3">
+          {[
+            { num: '①', label: '수급', text: aiBriefing?.signal1 },
+            { num: '②', label: '거래량', text: aiBriefing?.signal2 },
+            { num: '③', label: '밸류', text: aiBriefing?.signal3 },
+          ].map(({ num, label, text }) => (
+            <div key={label} className="flex items-start gap-2">
+              <div className="w-5 h-5 rounded-full bg-amber-400/25 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-[10px] font-medium text-amber-300">{num}</span>
+              </div>
+              <div>
+                <span className="text-[10px] font-medium text-emerald-300 mr-1.5">{label}</span>
+                <span className="text-[13px] text-white leading-snug">{text || '-'}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {/* 52주 게이지 */}
+        <div className="bg-white/8 rounded-xl p-3 mb-3">
+          <div className="text-[10px] text-emerald-300 mb-2">52주 가격 위치</div>
+          <div className="relative h-3 rounded-full overflow-visible mb-2"
+            style={{ background: 'linear-gradient(to right,#1d4ed8,#9ca3af 50%,#dc2626)' }}>
+            <div
+              className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-2 border-amber-400 rounded-full"
+              style={{ left: `clamp(0px, calc(${pricePos}% - 8px), calc(100% - 16px))` }}
+            />
+          </div>
+          <div className="flex justify-between text-[9px]">
+            <span className="text-blue-300">저점 {fmtPrice(naverData.low52w)}</span>
+            <span className="text-amber-300 font-medium">{posLabel}</span>
+            <span className="text-red-300">고점 {fmtPrice(naverData.high52w)}</span>
+          </div>
+        </div>
+
+        {/* 최신 뉴스 */}
+        {naverData.latestNews && (
+          <a
+            href={naverData.latestNews.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex items-start gap-2 bg-white/8 rounded-xl p-3 block no-underline"
+          >
+            <span className="text-[12px] flex-shrink-0 mt-0.5">📰</span>
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] text-white leading-snug line-clamp-2 m-0">{naverData.latestNews.title}</p>
+              <p className="text-[9px] text-emerald-400/60 mt-1 m-0">{naverData.latestNews.time} · 네이버 금융</p>
+            </div>
+          </a>
+        )}
+
+        <p className="text-[9px] text-emerald-400/50 mt-2">
           ※ 공개 시장 데이터 자동 요약 · 투자 권유 아님 · 모든 투자 판단은 본인 책임
         </p>
       </div>
