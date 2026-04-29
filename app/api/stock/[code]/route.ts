@@ -24,9 +24,12 @@ export async function GET(
 
     const f5d   = tradingData?.foreign5d ?? 0;
     const i5d   = tradingData?.institution5d ?? 0;
+    const p5d   = tradingData?.individual5d ?? 0;
     const fDays = tradingData?.consecutiveBuyDays ?? 0;
     const iDays = tradingData?.institutionConsecutiveBuyDays ?? 0;
     const fPct  = naverData.foreignOwnership > 0 ? naverData.foreignOwnership : 0;
+    const iPct  = naverData.institutionOwnership > 0 ? naverData.institutionOwnership : 0;
+    const pPct  = Math.max(0, 100 - fPct - iPct);
 
     const pricePos = naverData.high52w > naverData.low52w
       ? Math.max(0, Math.min(100,
@@ -70,6 +73,7 @@ export async function GET(
       lowToday: naverData.lowToday,
       marketCap: naverData.marketCap,
       volume: naverData.volume,
+      volumeRatio: naverData.volumeRatioCalc,
       high52w: naverData.high52w,
       low52w: naverData.low52w,
       pricePos: Math.round(pricePos),
@@ -77,6 +81,14 @@ export async function GET(
       pbr: naverData.pbr,
       dividendYield: naverData.dividendYield,
       foreignOwnership: fPct,
+      institutionOwnership: iPct,
+      individualOwnership: Math.round(pPct * 10) / 10,
+      // 수급 데이터
+      foreign5d: f5d,
+      institution5d: i5d,
+      individual5d: p5d,
+      foreignConsecutiveDays: fDays,
+      institutionConsecutiveDays: iDays,
       aiBriefing,
       latestNews: naverData.latestNews,
     });

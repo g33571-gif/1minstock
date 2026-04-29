@@ -12,6 +12,7 @@ interface StockResult {
   lowToday: number;
   marketCap: string;
   volume: number;
+  volumeRatio: number;
   high52w: number;
   low52w: number;
   pricePos: number;
@@ -19,12 +20,26 @@ interface StockResult {
   pbr: number;
   dividendYield: number;
   foreignOwnership: number;
+  institutionOwnership: number;
+  individualOwnership: number;
+  foreign5d: number;
+  institution5d: number;
+  individual5d: number;
+  foreignConsecutiveDays: number;
+  institutionConsecutiveDays: number;
   aiBriefing: { signal1: string; signal2: string; signal3: string } | null;
   latestNews: { title: string; time: string; url: string } | null;
 }
 
-function fmt(n: number) {
-  return n.toLocaleString('ko-KR');
+function fmt(n: number) { return n.toLocaleString('ko-KR'); }
+
+function fmtAmt(n: number) {
+  const abs = Math.abs(n);
+  const sign = n >= 0 ? '+' : '-';
+  if (abs >= 100_000_000_000) return `${sign}${(abs / 100_000_000_000).toFixed(1)}조`;
+  if (abs >= 100_000_000)     return `${sign}${(abs / 100_000_000).toFixed(1)}억`;
+  if (abs >= 10_000)           return `${sign}${(abs / 10_000).toFixed(0)}만`;
+  return n !== 0 ? `${sign}${abs.toLocaleString('ko-KR')}` : '-';
 }
 
 export default function StockResultCard({ data, onClose }: {
@@ -32,31 +47,47 @@ export default function StockResultCard({ data, onClose }: {
   onClose: () => void;
 }) {
   const isUp = data.changePercent >= 0;
+
   const posLabel =
     data.pricePos <= 20 ? '저점 근처' :
     data.pricePos <= 40 ? '저점~중간' :
     data.pricePos <= 60 ? '중간 구간' :
     data.pricePos <= 80 ? '중간~고점' : '고점 근처';
 
-  return (
-    <div className="animate-[slideDown_0.3s_ease]"
-      style={{ animation: 'slideDown 0.3s ease' }}>
-      <style>{`
-        @keyframes slideDown {
-          from { opacity: 0; transform: translateY(-8px); }
-          to   { opacity: 1; transform: translateY(0); }
-        }
-      `}</style>
+  // 추세 판단 (단순: 등락률 기반)
+  const trendLabel = data.changePercent > 1.5 ? '상승 중 ↗' :
+    data.changePercent > 0 ? '소폭 상승 ↗' :
+    data.changePercent < -1.5 ? '하락 중 ↘' :
+    data.changePercent < 0 ? '소폭 하락 ↘' : '보합';
+  const trendColor = data.changePercent >= 0 ? 'text-red-600' : 'text-blue-600';
+  const trendBg = data.changePercent >= 0 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100';
 
-      {/* 닫기 버튼 */}
+  // 거래량 비율
+  const vr = data.volumeRatio || 100;
+  const volLabel = vr >= 300 ? `평균 대비 +${Math.round(vr-100)}% 폭발` :
+    vr >= 200 ? `평균 대비 +${Math.round(vr-100)}% 급증` :
+    vr >= 150 ? `평균 대비 +${Math.round(vr-100)}% 증가` :
+    vr >= 80  ? `평균 수준` : `평균 대비 감소`;
+  const volColor = vr >= 150 ? 'text-red-600' : 'text-slate-600';
+  const volBg = vr >= 150 ? 'bg-red-50 border-red-100' : 'bg-slate-50 border-slate-200';
+
+  // 외국인 수급
+  const fLabel = data.foreignConsecutiveDays >= 3
+    ? `${data.foreignConsecutiveDays}일 연속 매수`
+    : data.foreign5d > 0 ? `순매수 ${fmtAmt(data.foreign5d)}`
+    : data.foreign5d < 0 ? `순매도 ${fmtAmt(data.foreign5d)}`
+    : '-';
+  const fColor = data.foreign5d >= 0 ? 'text-red-600' : 'text-blue-600';
+  const fBg = data.foreign5d >= 0 ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100';
+
+  return (
+    <div style={{ animation: 'slideDown 0.25s ease' }}>
+      <style>{`@keyframes slideDown{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}`}</style>
+
+      {/* 닫기 */}
       <div className="flex justify-between items-center mb-2">
         <span className="text-[11px] text-slate-400">검색 결과</span>
-        <button
-          onClick={onClose}
-          className="text-[11px] text-slate-400 hover:text-slate-600 px-2 py-1 rounded"
-        >
-          ✕ 닫기
-        </button>
+        <button onClick={onClose} className="text-[11px] text-slate-400 hover:text-slate-600 px-2 py-1">✕ 닫기</button>
       </div>
 
       {/* 헤더 */}
@@ -80,22 +111,17 @@ export default function StockResultCard({ data, onClose }: {
           </div>
         </div>
         <div className="border-t border-white/10 pt-3 grid grid-cols-4 gap-1 text-center">
-          <div>
-            <div className="text-[9px] text-emerald-300 mb-1">시가</div>
-            <div className="text-[11px] font-medium">{fmt(data.openToday || data.price)}</div>
-          </div>
-          <div>
-            <div className="text-[9px] text-red-300 mb-1">고가</div>
-            <div className="text-[11px] font-medium text-red-300">{fmt(data.highToday || data.price)}</div>
-          </div>
-          <div>
-            <div className="text-[9px] text-blue-300 mb-1">저가</div>
-            <div className="text-[11px] font-medium text-blue-300">{fmt(data.lowToday || data.price)}</div>
-          </div>
-          <div>
-            <div className="text-[9px] text-emerald-300 mb-1">시총</div>
-            <div className="text-[11px] font-medium">{data.marketCap}</div>
-          </div>
+          {[
+            { label: '시가', val: fmt(data.openToday || data.price), color: 'text-white' },
+            { label: '고가', val: fmt(data.highToday || data.price), color: 'text-red-300' },
+            { label: '저가', val: fmt(data.lowToday || data.price), color: 'text-blue-300' },
+            { label: '시총', val: data.marketCap, color: 'text-white' },
+          ].map(({ label, val, color }) => (
+            <div key={label}>
+              <div className="text-[9px] text-emerald-300 mb-1">{label}</div>
+              <div className={`text-[11px] font-medium ${color}`}>{val}</div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -128,8 +154,8 @@ export default function StockResultCard({ data, onClose }: {
           </div>
         ) : (
           <p className="text-[12px] text-emerald-200">
-            {data.market} 상장, 현재가 {fmt(data.price)}원
-            {data.per > 0 ? `, PER ${data.per.toFixed(1)}배` : ''}
+            {data.market} 상장 · {fmt(data.price)}원
+            {data.per > 0 ? ` · PER ${data.per.toFixed(1)}배` : ''}
           </p>
         )}
         <p className="text-[9px] text-emerald-400/50 mt-2">
@@ -168,45 +194,89 @@ export default function StockResultCard({ data, onClose }: {
         </div>
       </div>
 
-      {/* 4개 지표 */}
+      {/* 6개 지표 2×3 */}
       <div className="grid grid-cols-2 gap-2 mb-3">
-        {[
-          {
-            emoji: '🛡️', label: '위험 신호', sub: '상폐·정지·관리',
-            val: '없음', valColor: 'text-emerald-700',
-            tag: '정상', tagCls: 'bg-emerald-50 text-emerald-700 border border-emerald-100',
-          },
-          {
-            emoji: '💼', label: 'PER', sub: '주가 / 순이익',
-            val: data.per > 0 ? `${data.per.toFixed(1)}배` : '적자',
-            valColor: '',
-            tag: data.per > 0 ? '데이터 있음' : '해당없음',
-            tagCls: 'bg-slate-100 text-slate-500',
-          },
-          {
-            emoji: '📈', label: 'PBR', sub: '주가 / 순자산',
-            val: data.pbr > 0 ? `${data.pbr.toFixed(1)}배` : '-',
-            valColor: '', tag: data.pbr > 0 ? '데이터 있음' : '-',
-            tagCls: 'bg-slate-100 text-slate-500',
-          },
-          {
-            emoji: '💰', label: '배당률', sub: '연간 배당 / 주가',
-            val: data.dividendYield > 0 ? `${data.dividendYield.toFixed(1)}%` : '-',
-            valColor: data.dividendYield > 0 ? 'text-emerald-700' : '',
-            tag: data.dividendYield > 0 ? '연간 배당' : '무배당',
-            tagCls: data.dividendYield > 0
-              ? 'bg-emerald-50 text-emerald-700 border border-emerald-100'
-              : 'bg-slate-100 text-slate-400',
-          },
-        ].map(({ emoji, label, sub, val, valColor, tag, tagCls }) => (
-          <div key={label} className="bg-white rounded-xl p-3 border border-slate-100 text-center">
-            <div className="text-base mb-1">{emoji}</div>
-            <div className="text-[10px] text-slate-500 mb-0.5">{label}</div>
-            <div className="text-[9px] text-slate-400 mb-2">{sub}</div>
-            <div className={`text-[17px] font-medium mb-1.5 ${valColor || 'text-slate-800'}`}>{val}</div>
-            <span className={`text-[9px] font-medium px-2 py-0.5 rounded-full ${tagCls}`}>{tag}</span>
+
+        {/* 1. 위험 신호 */}
+        <div className="bg-white rounded-xl p-3 border border-emerald-100 text-center">
+          <div className="text-base mb-1">🛡️</div>
+          <div className="text-[10px] text-slate-500 mb-0.5">위험 신호</div>
+          <div className="text-[9px] text-slate-400 mb-2">상폐·정지·관리</div>
+          <div className="text-[15px] font-medium text-emerald-700 mb-1">없음</div>
+          <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-100">정상</span>
+        </div>
+
+        {/* 2. 외국인 수급 */}
+        <div className={`bg-white rounded-xl p-3 border text-center ${fBg}`}>
+          <div className="text-base mb-1">🌐</div>
+          <div className="text-[10px] text-slate-500 mb-0.5">외국인</div>
+          <div className="text-[9px] text-slate-400 mb-2">5일 순매수</div>
+          <div className={`text-[13px] font-medium mb-1 ${fColor}`}>
+            {data.foreignConsecutiveDays >= 3 ? `${data.foreignConsecutiveDays}일↑` :
+             data.foreign5d > 0 ? '매수↑' :
+             data.foreign5d < 0 ? '매도↓' : '-'}
           </div>
-        ))}
+          <div className={`text-[10px] font-medium ${fColor}`}>{fmtAmt(data.foreign5d)}</div>
+        </div>
+
+        {/* 3. 추세 */}
+        <div className={`bg-white rounded-xl p-3 border text-center ${trendBg}`}>
+          <div className="text-base mb-1">📉</div>
+          <div className="text-[10px] text-slate-500 mb-0.5">추세</div>
+          <div className="text-[9px] text-slate-400 mb-2">단기 주가</div>
+          <div className={`text-[13px] font-medium mb-1 ${trendColor}`}>{trendLabel}</div>
+          <div className="text-[10px] text-slate-400">
+            {Math.abs(data.changePercent).toFixed(1)}% 변동
+          </div>
+        </div>
+
+        {/* 4. 거래량 */}
+        <div className={`bg-white rounded-xl p-3 border text-center ${volBg}`}>
+          <div className="text-base mb-1">📊</div>
+          <div className="text-[10px] text-slate-500 mb-0.5">거래량</div>
+          <div className="text-[9px] text-slate-400 mb-2">평균 대비</div>
+          <div className={`text-[13px] font-medium mb-1 ${volColor}`}>
+            {vr >= 150 ? `+${Math.round(vr-100)}%` : vr >= 80 ? '보통' : '감소'}
+          </div>
+          <div className="text-[10px] text-slate-400">{volLabel.split(' ')[0]} {volLabel.split(' ')[1]}</div>
+        </div>
+
+        {/* 5. PER 동종대비 */}
+        <div className="bg-white rounded-xl p-3 border border-slate-100 text-center">
+          <div className="text-base mb-1">💼</div>
+          <div className="text-[10px] text-slate-500 mb-0.5">PER</div>
+          <div className="text-[9px] text-slate-400 mb-2">이익 대비 주가</div>
+          {data.per > 0 ? (
+            <>
+              <div className="text-[15px] font-medium text-slate-800 mb-1">{data.per.toFixed(1)}배</div>
+              <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">업종 비교 준비중</span>
+            </>
+          ) : (
+            <>
+              <div className="text-[14px] font-medium text-slate-400 mb-1">적자</div>
+              <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">해당없음</span>
+            </>
+          )}
+        </div>
+
+        {/* 6. PBR 동종대비 */}
+        <div className="bg-white rounded-xl p-3 border border-slate-100 text-center">
+          <div className="text-base mb-1">📈</div>
+          <div className="text-[10px] text-slate-500 mb-0.5">PBR</div>
+          <div className="text-[9px] text-slate-400 mb-2">자산 대비 주가</div>
+          {data.pbr > 0 ? (
+            <>
+              <div className="text-[15px] font-medium text-slate-800 mb-1">{data.pbr.toFixed(1)}배</div>
+              <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-500">업종 비교 준비중</span>
+            </>
+          ) : (
+            <>
+              <div className="text-[14px] font-medium text-slate-400 mb-1">-</div>
+              <span className="text-[9px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-400">데이터 없음</span>
+            </>
+          )}
+        </div>
+
       </div>
 
       {/* 최신 뉴스 */}
@@ -215,12 +285,8 @@ export default function StockResultCard({ data, onClose }: {
           <div className="text-[12px] font-medium text-slate-800 mb-2 flex items-center gap-1.5">
             <span>📰</span> 최신 뉴스
           </div>
-          <a
-            href={data.latestNews.url}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="flex items-start gap-3 bg-slate-50 rounded-xl p-3 no-underline block"
-          >
+          <a href={data.latestNews.url} target="_blank" rel="noopener noreferrer"
+            className="flex items-start gap-3 bg-slate-50 rounded-xl p-3 no-underline block">
             <div className="flex-1 min-w-0">
               <p className="text-[12px] font-medium text-slate-800 leading-snug mb-1 m-0 line-clamp-2">
                 {data.latestNews.title}
@@ -235,11 +301,10 @@ export default function StockResultCard({ data, onClose }: {
       )}
 
       {/* 전체 상세 보기 */}
-      <a
-        href={`/${data.code}`}
-        className="block bg-white rounded-2xl p-3.5 border border-slate-200 text-center text-[13px] font-medium text-emerald-700 hover:bg-slate-50 transition-colors no-underline mb-2"
-      >
-        전체 상세 보기 →
+      <a href={`/${data.code}`}
+        className="block bg-emerald-900 rounded-2xl p-3.5 text-center no-underline mb-3 hover:bg-emerald-800 transition-colors">
+        <div className="text-[13px] font-medium text-white">전체 상세 보기</div>
+        <div className="text-[10px] text-emerald-300 mt-0.5">실적 · 컨센서스 · 매매동향 전체 →</div>
       </a>
 
       <div className="text-center text-[10px] text-slate-400 py-1">
