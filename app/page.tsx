@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState } from 'react';
 import SearchBar from '@/components/home/SearchBar';
 import MarketIndices from '@/components/home/MarketIndices';
 import StockResultCard from '@/components/home/StockResultCard';
@@ -15,7 +15,7 @@ const MobileAd = () => (
 const PCBannerAd = () => (
   <div className="hidden lg:flex border border-dashed border-slate-200 rounded-xl p-3 mb-4 bg-slate-50 items-center justify-center flex-col">
     <div className="text-[10px] text-slate-400 font-semibold mb-1">AD · 광고</div>
-    <div className="text-xs text-slate-300" style={{ minHeight: '90px', display:'flex', alignItems:'center' }}>728×90</div>
+    <div className="text-xs text-slate-300" style={{ minHeight: '90px', display: 'flex', alignItems: 'center' }}>728×90</div>
   </div>
 );
 
@@ -23,12 +23,8 @@ const ResultSkeleton = ({ name }: { name: string }) => (
   <div className="animate-pulse mb-4">
     <div className="bg-emerald-900/40 rounded-2xl h-32 mb-3"></div>
     <div className="bg-emerald-900/20 rounded-2xl h-28 mb-3 border-2 border-amber-400/20"></div>
-    <div className="bg-white rounded-2xl p-4 mb-3 border border-slate-100 h-16">
-      <div className="h-2.5 bg-slate-200 rounded w-24 mb-2"></div>
-      <div className="h-8 bg-slate-200 rounded-full"></div>
-    </div>
     <div className="grid grid-cols-2 gap-2 mb-3">
-      {[1,2,3,4,5,6].map(i => <div key={i} className="bg-white rounded-xl h-20 border border-slate-100"></div>)}
+      {[1,2,3,4,5,6].map(i => <div key={i} className="bg-white rounded-xl h-24 border border-slate-100"></div>)}
     </div>
     <div className="flex items-center justify-center gap-2 py-4">
       <div className="w-4 h-4 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin"></div>
@@ -45,22 +41,18 @@ const POPULAR = [
 ];
 
 export default function HomePage() {
-  const [loading, setLoading]   = useState(false);
-  const [result, setResult]     = useState<any>(null);
-  const [error, setError]       = useState('');
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState<any>(null);
+  const [error, setError]     = useState('');
   const [selectedName, setSelectedName] = useState('');
-  const searchRef = useRef<HTMLDivElement>(null);
 
   const handleSelect = async (code: string, name: string) => {
     setSelectedName(name);
     setLoading(true);
     setResult(null);
     setError('');
-
-    // 검색창 위치로 스크롤 (결과가 검색창 바로 아래 보임)
-    setTimeout(() => {
-      searchRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 50);
+    // 페이지 맨 위로 스크롤 → 검색창이 항상 보임
+    window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
       const res  = await fetch(`/api/stock/${code}`);
@@ -116,24 +108,24 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── 결과 모드일 때 미니 헤더 ── */}
+      {/* ── 결과 모드 미니 헤더 ── */}
       {showResult && (
-        <div className="flex items-center justify-between mb-3 px-1">
+        <div className="flex items-center justify-between mb-2 px-1">
           <div className="flex items-center gap-2">
             <div className="w-1.5 h-1.5 rounded-full bg-emerald-600"></div>
             <span className="text-[11px] font-medium text-emerald-700">1MINSTOCK</span>
-            <span className="text-[11px] text-slate-400">매수 전 1분 체크</span>
           </div>
-          <button
-            onClick={handleClose}
-            className="text-[11px] text-slate-400 hover:text-slate-600 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors"
-          >
+          <button onClick={handleClose}
+            className="text-[11px] text-slate-400 hover:text-slate-600 px-2 py-1 rounded-lg hover:bg-slate-100 transition-colors">
             ✕ 초기화
           </button>
         </div>
       )}
 
-      {/* ── 광고 (히어로 아래, 결과 없을 때만) ── */}
+      {/* ── 검색창 (항상 최상단, 히어로/미니헤더 바로 아래) ── */}
+      <SearchBar onSelect={handleSelect} selectedName={selectedName} />
+
+      {/* ── 결과 없을 때 광고 ── */}
       {!showResult && (
         <>
           <MobileAd />
@@ -141,12 +133,7 @@ export default function HomePage() {
         </>
       )}
 
-      {/* ── 검색창 (항상 표시) ── */}
-      <div ref={searchRef}>
-        <SearchBar onSelect={handleSelect} selectedName={selectedName} />
-      </div>
-
-      {/* ── 결과 영역 (검색창 바로 아래) ── */}
+      {/* ── 결과 영역 (검색창 바로 아래 바로 붙음) ── */}
       {loading && <ResultSkeleton name={selectedName} />}
 
       {!loading && error && (
@@ -172,11 +159,8 @@ export default function HomePage() {
             <div className="text-[11px] font-medium text-slate-400 mb-2 px-1">많이 찾는 종목</div>
             <div className="grid grid-cols-2 gap-2">
               {POPULAR.map(({ name, code }) => (
-                <button
-                  key={code}
-                  onClick={() => handleSelect(code, name)}
-                  className="bg-white rounded-xl p-3 border border-slate-100 text-left hover:bg-slate-50 hover:border-emerald-200 transition-all"
-                >
+                <button key={code} onClick={() => handleSelect(code, name)}
+                  className="bg-white rounded-xl p-3 border border-slate-100 text-left hover:bg-slate-50 hover:border-emerald-200 transition-all">
                   <div className="flex justify-between items-center mb-1">
                     <span className="text-[12px] font-medium text-slate-800">{name}</span>
                     <span className="text-[9px] text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded font-medium">체크하기</span>
@@ -186,12 +170,10 @@ export default function HomePage() {
               ))}
             </div>
           </div>
-
           <div className="mb-4">
             <div className="text-[11px] font-medium text-slate-400 mb-2 px-1">시장 현황</div>
             <MarketIndices />
           </div>
-
           <MobileAd />
         </>
       )}

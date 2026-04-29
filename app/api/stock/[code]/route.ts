@@ -91,6 +91,7 @@ export async function GET(
       institutionConsecutiveDays: iDays,
       aiBriefing,
       latestNews: naverData.latestNews,
+      riskSignal: naverData.riskSignal,
     });
   } catch (err) {
     console.error('[API/stock]', err);

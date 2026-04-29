@@ -36,11 +36,10 @@ function HeaderContent() {
         <span className="font-medium text-base tracking-wider text-text-primary">1MINSTOCK</span>
       </Link>
       
-      {!isMainPage && (
-        <div className="flex-1 min-w-0 hidden sm:block">
-          <SearchAutocomplete variant="header" />
-        </div>
-      )}
+      {/* PC에서는 메인/상세 모두 검색창 표시 */}
+      <div className="flex-1 min-w-0 hidden lg:block">
+        <SearchAutocomplete variant="header" />
+      </div>
       
       <button className="ml-auto flex-shrink-0 w-11 h-11 bg-white rounded-xl flex items-center justify-center border border-emerald-700/15 hover:bg-emerald-50 transition-colors" aria-label="menu">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="none">

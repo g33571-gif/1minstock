@@ -1,34 +1,21 @@
 'use client';
 
 interface StockResult {
-  code: string;
-  name: string;
-  market: string;
-  price: number;
-  change: number;
-  changePercent: number;
-  openToday: number;
-  highToday: number;
-  lowToday: number;
-  marketCap: string;
-  volume: number;
-  volumeRatio: number;
-  high52w: number;
-  low52w: number;
-  pricePos: number;
-  per: number;
-  pbr: number;
-  dividendYield: number;
-  foreignOwnership: number;
-  institutionOwnership: number;
-  individualOwnership: number;
-  foreign5d: number;
-  institution5d: number;
-  individual5d: number;
-  foreignConsecutiveDays: number;
-  institutionConsecutiveDays: number;
+  code: string; name: string; market: string;
+  price: number; change: number; changePercent: number;
+  openToday: number; highToday: number; lowToday: number;
+  marketCap: string; volume: number; volumeRatio: number;
+  high52w: number; low52w: number; pricePos: number;
+  per: number; pbr: number; dividendYield: number;
+  foreignOwnership: number; institutionOwnership: number; individualOwnership: number;
+  foreign5d: number; institution5d: number; individual5d: number;
+  foreignConsecutiveDays: number; institutionConsecutiveDays: number;
   aiBriefing: { signal1: string; signal2: string; signal3: string } | null;
   latestNews: { title: string; time: string; url: string } | null;
+  riskSignal: {
+    hasRisk: boolean;
+    items: Array<{ type: string; label: string; description: string }>;
+  };
 }
 
 function fmt(n: number) { return n.toLocaleString('ko-KR'); }
@@ -42,9 +29,31 @@ function fmtAmt(n: number) {
   return n !== 0 ? `${sign}${abs.toLocaleString('ko-KR')}` : '-';
 }
 
+// 카드 공통 컨테이너
+function MetricCard({
+  emoji, label, mainValue, mainColor, subValue, subColor, bg, border
+}: {
+  emoji: string; label: string;
+  mainValue: string; mainColor: string;
+  subValue: string; subColor?: string;
+  bg: string; border: string;
+}) {
+  return (
+    <div className={`rounded-xl p-3.5 border ${bg} ${border}`}>
+      <div className="flex items-center gap-1.5 mb-2.5">
+        <span style={{ fontSize: 13 }}>{emoji}</span>
+        <span className={`text-[10px] font-medium ${subColor || 'text-slate-500'}`}>{label}</span>
+      </div>
+      <div className={`text-[26px] font-medium leading-none mb-1.5 ${mainColor}`}>
+        {mainValue}
+      </div>
+      <div className={`text-[10px] ${subColor || 'text-slate-400'}`}>{subValue}</div>
+    </div>
+  );
+}
+
 export default function StockResultCard({ data, onClose }: {
-  data: StockResult;
-  onClose: () => void;
+  data: StockResult; onClose: () => void;
 }) {
   const isUp = data.changePercent >= 0;
 
@@ -54,29 +63,59 @@ export default function StockResultCard({ data, onClose }: {
     data.pricePos <= 60 ? '중간 구간' :
     data.pricePos <= 80 ? '중간~고점' : '고점 근처';
 
-  // 추세
-  const trendLabel = data.changePercent > 2 ? '강한 상승' :
-    data.changePercent > 0.5 ? '상승 중' :
-    data.changePercent < -2 ? '강한 하락' :
-    data.changePercent < -0.5 ? '하락 중' : '보합';
-  const trendArrow = data.changePercent >= 0 ? '↗' : '↘';
-  const isUpTrend = data.changePercent >= 0;
+  // 외국인 순매수
+  const isForeignBuy   = data.foreign5d >= 0;
+  const hasForeign     = data.foreign5d !== 0;
+  const fDays          = data.foreignConsecutiveDays;
+  const foreignMainVal = hasForeign
+    ? (fDays >= 3 ? `${fDays}일↑` : isForeignBuy ? '매수↑' : '매도↓')
+    : '-';
+  const foreignSubVal  = hasForeign ? fmtAmt(data.foreign5d) + ' (5일)' : '데이터 없음';
 
-  // 거래량
-  const vr = data.volumeRatio || 100;
-  const isVolHigh = vr >= 150;
-  const volText = vr >= 300 ? `+${Math.round(vr-100)}%` :
-    vr >= 150 ? `+${Math.round(vr-100)}%` :
-    vr >= 80  ? '보통' : '감소';
-  const volSub = vr >= 300 ? '폭발적 급증' :
-    vr >= 200 ? '거래량 급증' :
-    vr >= 150 ? '거래량 증가' :
-    vr >= 80  ? '평균 수준' : '평균 이하';
+  // 외국인 보유율
+  const fPct = data.foreignOwnership;
+  const fPctColor = fPct >= 50 ? 'text-red-600' : fPct >= 30 ? 'text-slate-700' : 'text-blue-600';
 
-  // 외국인
-  const hasForeign = data.foreign5d !== 0;
-  const isForeignBuy = data.foreign5d >= 0;
-  const fDays = data.foreignConsecutiveDays;
+  // PER
+  const hasPer = data.per > 0;
+  const perVal = hasPer ? `${data.per.toFixed(1)}` : data.per === 0 ? '-' : '적자';
+  const perColor = hasPer
+    ? (data.per < 10 ? 'text-blue-600' : data.per < 25 ? 'text-slate-800' : 'text-red-600')
+    : 'text-slate-300';
+
+  // PBR
+  const hasPbr = data.pbr > 0;
+  const pbrVal = hasPbr ? `${data.pbr.toFixed(1)}` : '-';
+  const pbrColor = hasPbr
+    ? (data.pbr < 1 ? 'text-blue-600' : data.pbr < 3 ? 'text-slate-800' : 'text-red-600')
+    : 'text-slate-300';
+
+  // 배당률
+  const hasDividend = data.dividendYield > 0;
+  const divVal = hasDividend ? `${data.dividendYield.toFixed(1)}%` : '-';
+  const divColor = hasDividend
+    ? (data.dividendYield >= 4 ? 'text-red-600' : data.dividendYield >= 2 ? 'text-emerald-700' : 'text-slate-600')
+    : 'text-slate-300';
+  const divSub = hasDividend
+    ? (data.dividendYield >= 4 ? '고배당 주목' : data.dividendYield >= 2 ? '연간 배당' : '연간 배당')
+    : '무배당';
+
+  // 거래량 (오늘 거래량, volumeRatio 없으면 주수만)
+  const vr = data.volumeRatio || 0;
+  const hasVol = data.volume > 0;
+  const volMainVal = vr >= 150 ? `+${Math.round(vr-100)}%`
+    : vr > 0 && vr < 80 ? `${Math.round(vr)}%`
+    : hasVol ? `${(data.volume / 1000).toFixed(0)}K` : '-';
+  const volSub = vr >= 300 ? '폭발적 급증'
+    : vr >= 200 ? '거래량 급증'
+    : vr >= 150 ? '평균 대비 증가'
+    : vr > 0 ? '평균 수준'
+    : hasVol ? '오늘 거래량' : '데이터 없음';
+  const volColor = vr >= 150 ? 'text-amber-600'
+    : vr > 0 ? 'text-slate-600'
+    : 'text-slate-500';
+  const volBg = vr >= 150 ? 'bg-amber-50' : 'bg-slate-50';
+  const volBorder = vr >= 150 ? 'border-amber-100' : 'border-slate-200';
 
   return (
     <div style={{ animation: 'slideDown 0.25s ease' }}>
@@ -106,7 +145,7 @@ export default function StockResultCard({ data, onClose }: {
           {[
             { label: '시가', val: fmt(data.openToday || data.price), color: 'text-white' },
             { label: '고가', val: fmt(data.highToday || data.price), color: 'text-red-300' },
-            { label: '저가', val: fmt(data.lowToday  || data.price), color: 'text-blue-300' },
+            { label: '저가', val: fmt(data.lowToday || data.price), color: 'text-blue-300' },
             { label: '시총', val: data.marketCap, color: 'text-white' },
           ].map(({ label, val, color }) => (
             <div key={label}>
@@ -163,8 +202,7 @@ export default function StockResultCard({ data, onClose }: {
         <div className="relative h-3 rounded-full overflow-visible mb-2"
           style={{ background: 'linear-gradient(to right,#1d4ed8,#9ca3af 50%,#dc2626)' }}>
           <div className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-[3px] border-emerald-700 rounded-full"
-            style={{ left: `clamp(0px, calc(${data.pricePos}% - 8px), calc(100% - 16px))` }}
-          />
+            style={{ left: `clamp(0px, calc(${data.pricePos}% - 8px), calc(100% - 16px))` }} />
         </div>
         <div className="flex justify-between items-center mb-1">
           <div>
@@ -185,122 +223,135 @@ export default function StockResultCard({ data, onClose }: {
         </div>
       </div>
 
-      {/* ── 6개 지표 2×3 (강조 강화) ── */}
+      {/* ── 6개 지표 2×3 (신뢰성 있는 데이터만) ── */}
+      {/* 위험신호 배너 (있을 때만 표시) */}
+      {data.riskSignal?.hasRisk && (
+        <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 mb-3">
+          <div className="flex items-center gap-2 mb-2">
+            <div className="w-7 h-7 bg-red-600 rounded-full flex items-center justify-center flex-shrink-0">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+              </svg>
+            </div>
+            <div>
+              <div className="text-[13px] font-medium text-red-900">위험 신호 {data.riskSignal.items.length}건</div>
+              <div className="text-[10px] text-red-700">투자에 신중한 검토가 필요합니다</div>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            {data.riskSignal.items.map((r, i) => (
+              <div key={i} className="flex items-start gap-2 bg-white rounded-lg p-2.5 border-l-[3px] border-red-600">
+                <span className="text-[10px] px-2 py-0.5 bg-red-600 text-white rounded-full font-medium flex-shrink-0">{r.label}</span>
+                <span className="text-[11px] text-red-900 leading-snug">{r.description}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div className="text-[11px] font-medium text-slate-400 mb-2 px-0.5">핵심 지표</div>
       <div className="grid grid-cols-2 gap-2 mb-3">
 
-        {/* 1. 위험 신호 */}
-        <div className="bg-emerald-50 rounded-xl p-3.5 border border-emerald-100">
-          <div className="flex items-center gap-1.5 mb-2">
-            <span style={{ fontSize: 14 }}>🛡️</span>
-            <span className="text-[10px] text-emerald-700 font-medium">위험 신호</span>
+        {/* 1. 외국인 순매수 */}
+        <div className={`rounded-xl p-3.5 border ${isForeignBuy ? 'bg-red-50 border-red-100' : hasForeign ? 'bg-blue-50 border-blue-100' : 'bg-slate-50 border-slate-200'}`}>
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <span style={{ fontSize: 13 }}>🌐</span>
+            <span className={`text-[10px] font-medium ${isForeignBuy && hasForeign ? 'text-red-700' : hasForeign ? 'text-blue-700' : 'text-slate-400'}`}>외국인 순매수</span>
           </div>
-          <div className="text-[26px] font-medium text-emerald-700 leading-none mb-1">없음</div>
-          <div className="text-[10px] text-emerald-600">정상 거래 중</div>
-          <div className="mt-2 text-[9px] text-emerald-500">상폐·정지·관리종목 없음</div>
+          <div className={`text-[26px] font-medium leading-none mb-1.5 ${hasForeign ? (isForeignBuy ? 'text-red-600' : 'text-blue-600') : 'text-slate-300'}`}>
+            {foreignMainVal}
+          </div>
+          <div className={`text-[10px] font-medium ${hasForeign ? (isForeignBuy ? 'text-red-500' : 'text-blue-500') : 'text-slate-400'}`}>
+            {foreignSubVal}
+          </div>
         </div>
 
-        {/* 2. 외국인 수급 */}
-        <div className={`rounded-xl p-3.5 border ${isForeignBuy ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'}`}>
-          <div className="flex items-center gap-1.5 mb-2">
-            <span style={{ fontSize: 14 }}>🌐</span>
-            <span className={`text-[10px] font-medium ${isForeignBuy ? 'text-red-700' : 'text-blue-700'}`}>외국인</span>
+        {/* 2. 외국인 보유율 */}
+        <div className="bg-white rounded-xl p-3.5 border border-slate-100">
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <span style={{ fontSize: 13 }}>👥</span>
+            <span className="text-[10px] font-medium text-slate-500">외국인 보유율</span>
           </div>
-          {hasForeign ? (
+          {fPct > 0 ? (
             <>
-              <div className={`text-[26px] font-medium leading-none mb-1 ${isForeignBuy ? 'text-red-600' : 'text-blue-600'}`}>
-                {fDays >= 3 ? `${fDays}일↑` : isForeignBuy ? '매수↑' : '매도↓'}
+              <div className={`text-[26px] font-medium leading-none mb-1.5 ${fPctColor}`}>
+                {fPct.toFixed(1)}
+                <span className="text-[14px] text-slate-400 ml-0.5">%</span>
               </div>
-              <div className={`text-[11px] font-medium ${isForeignBuy ? 'text-red-600' : 'text-blue-600'}`}>
-                {fmtAmt(data.foreign5d)}
+              <div className="text-[10px] text-slate-400">
+                {fPct >= 50 ? '외국인 과반 보유' : fPct >= 30 ? '외국인 비중 높음' : '외국인 비중 낮음'}
               </div>
-              <div className="mt-1 text-[9px] text-slate-400">5일 순매수 금액</div>
             </>
           ) : (
             <>
-              <div className="text-[22px] font-medium text-slate-400 leading-none mb-1">-</div>
+              <div className="text-[24px] font-medium text-slate-300 leading-none mb-1.5">-</div>
               <div className="text-[10px] text-slate-400">데이터 없음</div>
             </>
           )}
         </div>
 
-        {/* 3. 추세 */}
-        <div className={`rounded-xl p-3.5 border ${isUpTrend ? 'bg-red-50 border-red-100' : 'bg-blue-50 border-blue-100'}`}>
-          <div className="flex items-center gap-1.5 mb-2">
-            <span style={{ fontSize: 14 }}>📉</span>
-            <span className={`text-[10px] font-medium ${isUpTrend ? 'text-red-700' : 'text-blue-700'}`}>추세</span>
+        {/* 3. PER */}
+        <div className="bg-white rounded-xl p-3.5 border border-slate-100">
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <span style={{ fontSize: 13 }}>💼</span>
+            <span className="text-[10px] font-medium text-slate-500">PER</span>
           </div>
-          <div className={`text-[22px] font-medium leading-none mb-1 ${isUpTrend ? 'text-red-600' : 'text-blue-600'}`}>
-            {trendLabel}
+          <div className={`leading-none mb-1.5 ${hasPer ? 'text-[26px] font-medium ' + perColor : 'text-[22px] font-medium text-slate-300'}`}>
+            {perVal}
+            {hasPer && <span className="text-[14px] text-slate-400 ml-0.5">배</span>}
           </div>
-          <div className={`text-[13px] font-medium ${isUpTrend ? 'text-red-500' : 'text-blue-500'}`}>
-            {trendArrow} {Math.abs(data.changePercent).toFixed(2)}%
+          <div className="text-[10px] text-slate-400">
+            {hasPer
+              ? data.per < 10 ? '이익 대비 저평가 구간'
+              : data.per < 25 ? '이익 대비 적정 수준'
+              : '이익 대비 고평가 구간'
+              : data.per === 0 ? '데이터 없음' : '현재 적자 상태'}
           </div>
-          <div className="mt-1 text-[9px] text-slate-400">오늘 등락 기준</div>
         </div>
 
-        {/* 4. 거래량 */}
-        <div className={`rounded-xl p-3.5 border ${isVolHigh ? 'bg-amber-50 border-amber-100' : 'bg-slate-50 border-slate-200'}`}>
-          <div className="flex items-center gap-1.5 mb-2">
-            <span style={{ fontSize: 14 }}>📊</span>
-            <span className={`text-[10px] font-medium ${isVolHigh ? 'text-amber-700' : 'text-slate-500'}`}>거래량</span>
+        {/* 4. PBR */}
+        <div className="bg-white rounded-xl p-3.5 border border-slate-100">
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <span style={{ fontSize: 13 }}>📈</span>
+            <span className="text-[10px] font-medium text-slate-500">PBR</span>
           </div>
-          <div className={`text-[26px] font-medium leading-none mb-1 ${isVolHigh ? 'text-amber-600' : 'text-slate-600'}`}>
-            {volText}
+          <div className={`leading-none mb-1.5 ${hasPbr ? 'text-[26px] font-medium ' + pbrColor : 'text-[22px] font-medium text-slate-300'}`}>
+            {pbrVal}
+            {hasPbr && <span className="text-[14px] text-slate-400 ml-0.5">배</span>}
           </div>
-          <div className={`text-[10px] font-medium ${isVolHigh ? 'text-amber-600' : 'text-slate-500'}`}>
+          <div className="text-[10px] text-slate-400">
+            {hasPbr
+              ? data.pbr < 1 ? '순자산보다 낮은 주가'
+              : data.pbr < 3 ? '자산 대비 적정 수준'
+              : '자산 대비 고평가 구간'
+              : '데이터 없음'}
+          </div>
+        </div>
+
+        {/* 5. 배당률 */}
+        <div className={`rounded-xl p-3.5 border ${hasDividend ? 'bg-emerald-50 border-emerald-100' : 'bg-slate-50 border-slate-200'}`}>
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <span style={{ fontSize: 13 }}>💰</span>
+            <span className={`text-[10px] font-medium ${hasDividend ? 'text-emerald-700' : 'text-slate-400'}`}>배당률</span>
+          </div>
+          <div className={`text-[26px] font-medium leading-none mb-1.5 ${hasDividend ? divColor : 'text-slate-300'}`}>
+            {divVal}
+          </div>
+          <div className={`text-[10px] ${hasDividend ? 'text-emerald-600' : 'text-slate-400'}`}>{divSub}</div>
+        </div>
+
+        {/* 6. 거래량 */}
+        <div className={`rounded-xl p-3.5 border ${volBg} ${volBorder}`}>
+          <div className="flex items-center gap-1.5 mb-2.5">
+            <span style={{ fontSize: 13 }}>📊</span>
+            <span className={`text-[10px] font-medium ${vr >= 150 ? 'text-amber-700' : 'text-slate-500'}`}>거래량</span>
+          </div>
+          <div className={`text-[26px] font-medium leading-none mb-1.5 ${volColor}`}>
+            {volMainVal}
+          </div>
+          <div className={`text-[10px] ${vr >= 150 ? 'text-amber-600' : 'text-slate-400'}`}>
             {volSub}
           </div>
-          <div className="mt-1 text-[9px] text-slate-400">평균 대비 거래량</div>
-        </div>
-
-        {/* 5. PER */}
-        <div className="bg-white rounded-xl p-3.5 border border-slate-100">
-          <div className="flex items-center gap-1.5 mb-2">
-            <span style={{ fontSize: 14 }}>💼</span>
-            <span className="text-[10px] text-slate-500 font-medium">PER</span>
-          </div>
-          {data.per > 0 ? (
-            <>
-              <div className="text-[26px] font-medium text-slate-800 leading-none mb-1">
-                {data.per.toFixed(1)}
-                <span className="text-[14px] text-slate-400 ml-0.5">배</span>
-              </div>
-              <div className="text-[10px] text-slate-500">이익 대비 주가</div>
-              <div className="mt-2 inline-block text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">
-                업종 비교 준비중
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-[22px] font-medium text-slate-300 leading-none mb-1">적자</div>
-              <div className="text-[10px] text-slate-400">현재 순손실</div>
-            </>
-          )}
-        </div>
-
-        {/* 6. PBR */}
-        <div className="bg-white rounded-xl p-3.5 border border-slate-100">
-          <div className="flex items-center gap-1.5 mb-2">
-            <span style={{ fontSize: 14 }}>📈</span>
-            <span className="text-[10px] text-slate-500 font-medium">PBR</span>
-          </div>
-          {data.pbr > 0 ? (
-            <>
-              <div className="text-[26px] font-medium text-slate-800 leading-none mb-1">
-                {data.pbr.toFixed(1)}
-                <span className="text-[14px] text-slate-400 ml-0.5">배</span>
-              </div>
-              <div className="text-[10px] text-slate-500">자산 대비 주가</div>
-              <div className="mt-2 inline-block text-[9px] bg-slate-100 text-slate-400 px-2 py-0.5 rounded-full">
-                업종 비교 준비중
-              </div>
-            </>
-          ) : (
-            <>
-              <div className="text-[22px] font-medium text-slate-300 leading-none mb-1">-</div>
-              <div className="text-[10px] text-slate-400">데이터 없음</div>
-            </>
-          )}
         </div>
 
       </div>
