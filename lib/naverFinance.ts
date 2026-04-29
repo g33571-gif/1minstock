@@ -1,9 +1,6 @@
-// 네이버 금융 크롤링 (최종판)
-// 정확한 키 매핑 - 모든 데이터 정확히 가져오기
-
 import axios from 'axios';
 
-interface NaverStockData {
+export interface NaverStockData {
   code: string;
   name: string;
   market: string;
@@ -18,12 +15,22 @@ interface NaverStockData {
   eps: number;
   bps: number;
   dividendYield: number;
-  foreignOwnership: number;
+  foreignOwnership: number;   // 외국인 보유율 %
+  institutionOwnership: number; // 기관 보유율 % (없으면 0)
   volumeRatio: number;
   description: string;
   highToday: number;
   lowToday: number;
+  openToday: number;
   volume: number;
+  // 컨센서스
+  consensus: {
+    buyCount: number;
+    neutralCount: number;
+    sellCount: number;
+    targetPrice: number;      // 평균 목표가 (원)
+    targetPriceLow: number;   // 하향 목표가
+  } | null;
 }
 
 const headers = {
@@ -34,145 +41,156 @@ const headers = {
   'Referer': 'https://m.stock.naver.com/',
 };
 
-/**
- * 네이버 금융 통합 정보 가져오기 (정확한 키 매핑)
- */
 export async function fetchNaverStock(code: string): Promise<NaverStockData | null> {
   try {
-    if (!/^\d{6}$/.test(code)) {
-      return null;
-    }
+    if (!/^\d{6}$/.test(code)) return null;
 
-    // integration API에서 모든 정보 가져옴
     const response = await axios.get(
       `https://m.stock.naver.com/api/stock/${code}/integration`,
-      {
-        headers,
-        timeout: 5000,
-      }
+      { headers, timeout: 5000 }
     );
 
     const data = response.data;
-
-    // 종목명
     const name = data?.stockName || '';
     if (!name) return null;
 
-    // 시장 구분
     const exchangeCode = data?.stockExchangeType?.code || '';
     const market = exchangeCode === 'KOSPI' ? 'KOSPI' :
                    exchangeCode === 'KOSDAQ' ? 'KOSDAQ' : 'KOSPI';
 
-    // totalInfos 배열에서 값 찾기 (헬퍼 함수)
-    const getInfo = (code: string): string => {
-      const item = data?.totalInfos?.find((i: any) => i.code === code);
+    const getInfo = (key: string): string => {
+      const item = data?.totalInfos?.find((i: any) => i.code === key);
       return item?.value || '0';
     };
 
-    const parseNum = (val: string): number => {
-      return parseFloat(String(val).replace(/,/g, '')) || 0;
-    };
+    const parseNum = (val: string): number =>
+      parseFloat(String(val).replace(/,/g, '')) || 0;
 
-    const parseInt2 = (val: string): number => {
-      return parseInt(String(val).replace(/,/g, '')) || 0;
-    };
+    const parseInt2 = (val: string): number =>
+      parseInt(String(val).replace(/,/g, '')) || 0;
 
-    // 가격 정보
-    const price = parseInt2(getInfo('lastClosePrice') || getInfo('closePrice'));
-    
-    // 등락 (compareToPreviousClosePrice가 totalInfos에는 없을 수 있음, 메인 객체 확인)
-    const lastClose = parseInt2(getInfo('lastClosePrice'));
-    const close = parseInt2(getInfo('closePrice') || getInfo('lastClosePrice'));
-    
-    // 등락률 - integration data에 직접 있을 수 있음
+    const price = parseInt2(getInfo('closePrice') || getInfo('lastClosePrice'));
+
     let changePercent = parseFloat(data?.fluctuationsRatio || '0');
     let change = parseInt2(data?.compareToPreviousClosePrice || '0');
-    
-    // 만약 fluctuationsRatio가 음수가 아니라 절대값이면 부호 판단 필요
     const trendName = data?.compareToPreviousPrice?.name || '';
     if (trendName === 'FALLING' && change > 0) change = -change;
     if (trendName === 'FALLING' && changePercent > 0) changePercent = -changePercent;
 
-    // 52주 최고/최저
     const high52w = parseInt2(getInfo('highPriceOf52Weeks'));
-    const low52w = parseInt2(getInfo('lowPriceOf52Weeks'));
-    
-    // 당일 고가/저가
+    const low52w  = parseInt2(getInfo('lowPriceOf52Weeks'));
     const highToday = parseInt2(getInfo('highPrice'));
-    const lowToday = parseInt2(getInfo('lowPrice'));
+    const lowToday  = parseInt2(getInfo('lowPrice'));
+    const openToday = parseInt2(getInfo('openPrice'));
 
-    // 시가총액 (marketValue 형식: "1,297조 8,739억")
-    const marketCapStr = getInfo('marketValue');
-    const marketCap = formatMarketCapFromString(marketCapStr);
-
-    // PER, PBR, EPS, BPS, 배당
+    const marketCap = formatMarketCap(getInfo('marketValue'));
     const per = parseNum(getInfo('per'));
     const pbr = parseNum(getInfo('pbr'));
     const eps = parseInt2(getInfo('eps'));
     const bps = parseInt2(getInfo('bps'));
     const dividendYield = parseNum(getInfo('dividendYieldRatio'));
-
-    // 외국인 소진율 (foreignRate 또는 foreignerRate)
-    const foreignOwnershipStr = getInfo('foreignRate') || getInfo('foreignerHoldRatio') || getInfo('foreignerRate');
-    const foreignOwnership = parseNum(foreignOwnershipStr.replace('%', ''));
-    
-    // 거래량
     const volume = parseInt2(getInfo('accumulatedTradingVolume'));
 
+    // 외국인 보유율
+    const foreignStr = getInfo('foreignRate') || getInfo('foreignerHoldRatio') || getInfo('foreignerRate');
+    const foreignOwnership = parseNum(foreignStr.replace('%', ''));
+
+    // 기관 보유율 (institutionHoldRatio 또는 organRate)
+    const instStr = getInfo('institutionHoldRatio') || getInfo('organRate') || '0';
+    const institutionOwnership = parseNum(instStr.replace('%', ''));
+
+    // ── 컨센서스 파싱 ──
+    // 네이버 integration API의 consensusInfo 필드
+    let consensus: NaverStockData['consensus'] = null;
+    const ci = data?.consensusInfo;
+    if (ci) {
+      // recommMean: "4.20" (5=강력매수, 4=매수, 3=중립, 2=매도, 1=강력매도)
+      // priceTargetMean: "293,200" (평균 목표가)
+      // opinion: { buy, hold, sell } 또는 개별 필드
+      const targetMean = parseInt2(String(ci.priceTargetMean || '0').replace(/,/g, ''));
+      const targetLow  = parseInt2(String(ci.priceTargetLow  || ci.priceTargetMin || '0').replace(/,/g, ''));
+
+      // 의견 수 - 네이버는 recommCount 또는 opinion 객체로 제공
+      let buyCount     = parseInt(ci.buy     || ci.strongBuy || '0') || 0;
+      let neutralCount = parseInt(ci.hold    || ci.neutral   || '0') || 0;
+      let sellCount    = parseInt(ci.sell    || ci.strongSell || '0') || 0;
+
+      // opinion 객체 형태인 경우
+      if (ci.opinion) {
+        buyCount     = parseInt(ci.opinion.buy  || '0') || 0;
+        neutralCount = parseInt(ci.opinion.hold || '0') || 0;
+        sellCount    = parseInt(ci.opinion.sell || '0') || 0;
+      }
+
+      // recommMean만 있고 개별 수가 없는 경우
+      if (buyCount === 0 && neutralCount === 0 && sellCount === 0 && ci.recommMean) {
+        const mean = parseFloat(ci.recommMean);
+        // 5점 만점 기준으로 추정 (총 15개 애널리스트 가정)
+        const total = parseInt(ci.recommCount || '15') || 15;
+        if (mean >= 4.5) { buyCount = Math.round(total * 0.9); neutralCount = total - buyCount; }
+        else if (mean >= 3.5) { buyCount = Math.round(total * 0.6); neutralCount = Math.round(total * 0.3); sellCount = total - buyCount - neutralCount; }
+        else if (mean >= 2.5) { neutralCount = Math.round(total * 0.5); buyCount = Math.round(total * 0.25); sellCount = total - buyCount - neutralCount; }
+        else { sellCount = Math.round(total * 0.6); neutralCount = Math.round(total * 0.3); buyCount = total - sellCount - neutralCount; }
+      }
+
+      if (targetMean > 0 || buyCount > 0) {
+        consensus = { buyCount, neutralCount, sellCount, targetPrice: targetMean, targetPriceLow: targetLow };
+      }
+    }
+
+    // integration API에 consensusInfo가 없는 경우 별도 API 시도
+    if (!consensus) {
+      try {
+        const consRes = await axios.get(
+          `https://m.stock.naver.com/api/stock/${code}/consensus`,
+          { headers, timeout: 3000 }
+        );
+        const cd = consRes.data;
+        if (cd) {
+          const targetMean = parseInt2(String(cd.priceTargetMean || cd.targetPriceMean || '0').replace(/,/g, ''));
+          const buyCount     = parseInt(cd.buy  || cd.strong_buy  || '0') || 0;
+          const neutralCount = parseInt(cd.hold || cd.neutral     || '0') || 0;
+          const sellCount    = parseInt(cd.sell || cd.strong_sell || '0') || 0;
+          if (targetMean > 0 || buyCount > 0) {
+            consensus = { buyCount, neutralCount, sellCount, targetPrice: targetMean, targetPriceLow: 0 };
+          }
+        }
+      } catch {}
+    }
+
     return {
-      code,
-      name,
-      market,
-      price: price || close,
-      change,
-      changePercent,
-      high52w,
-      low52w,
+      code, name, market,
+      price: price || 0,
+      change, changePercent,
+      high52w, low52w,
       marketCap,
-      per,
-      pbr,
-      eps,
-      bps,
+      per, pbr, eps, bps,
       dividendYield,
       foreignOwnership,
+      institutionOwnership,
       volumeRatio: 100,
       description: `${market} 상장 종목`,
-      highToday,
-      lowToday,
+      highToday, lowToday, openToday,
       volume,
+      consensus,
     };
   } catch (error) {
-    console.error(`[Naver Finance] Error fetching ${code}:`, error);
+    console.error(`[NaverFinance] Error ${code}:`, error);
     return null;
   }
 }
 
-/**
- * 시가총액 문자열 처리
- * "1,297조 8,739억" → "1297조"
- * "53,000억" → "5조" 또는 "5.3조"
- * "428억" → "428억"
- */
-function formatMarketCapFromString(str: string): string {
-  if (!str || str === '0') return '0';
-  
-  // "1,297조 8,739억" 형식
+function formatMarketCap(str: string): string {
+  if (!str || str === '0') return '-';
   const trillionMatch = str.match(/([\d,]+)조/);
   if (trillionMatch) {
-    const trillion = parseInt(trillionMatch[1].replace(/,/g, ''));
-    return `${trillion.toLocaleString('ko-KR')}조`;
+    return `${parseInt(trillionMatch[1].replace(/,/g, '')).toLocaleString('ko-KR')}조`;
   }
-  
-  // "53,000억" 형식
   const billionMatch = str.match(/([\d,]+)억/);
   if (billionMatch) {
     const billion = parseInt(billionMatch[1].replace(/,/g, ''));
-    if (billion >= 10000) {
-      const trillion = (billion / 10000).toFixed(1);
-      return `${trillion}조`;
-    }
+    if (billion >= 10000) return `${(billion / 10000).toFixed(1)}조`;
     return `${billion.toLocaleString('ko-KR')}억`;
   }
-  
   return str;
 }
