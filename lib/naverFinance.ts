@@ -77,7 +77,15 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
     const parseInt2 = (val: string): number =>
       parseInt(String(val).replace(/,/g, '')) || 0;
 
-    const price = parseInt2(getInfo('closePrice') || getInfo('lastClosePrice'));
+    // 0원 버그 방지: closePrice가 0이면 다른 키로 fallback
+    const rawClose = parseInt2(getInfo('closePrice'));
+    const price = rawClose > 0
+      ? rawClose
+      : parseInt2(
+          getInfo('lastClosePrice') ||
+          getInfo('currentPrice') ||
+          String(data?.dealTrendInfos?.[0]?.closePrice || '0')
+        );
 
     let changePercent = parseFloat(data?.fluctuationsRatio || '0');
     let change = parseInt2(data?.compareToPreviousClosePrice || '0');
