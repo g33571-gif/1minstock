@@ -1,6 +1,8 @@
 import type { Metadata } from 'next';
+import { Suspense } from 'react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
+import LoadingProgress from '@/components/common/LoadingProgress';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -41,6 +43,9 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-bg-page">
+        <Suspense fallback={null}>
+          <LoadingProgress />
+        </Suspense>
         {/* 헤더 - 전체 너비 단독 영역 (광고와 분리) */}
         <header className="sticky top-0 z-40 bg-bg-page/95 backdrop-blur-sm border-b border-emerald-700/[0.06]">
           <div className="max-w-6xl mx-auto">
