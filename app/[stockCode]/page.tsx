@@ -4,6 +4,9 @@ import { fetchNaverStock } from '@/lib/naverFinance';
 import { fetchDartCompany } from '@/lib/dart';
 import { fetchInvestorTrading } from '@/lib/investorTrading';
 import { fetchAIBriefing } from '@/lib/aiSummary';
+import { getMarketStatus, isPreMarketDataPattern } from '@/lib/marketStatus';
+import { getIndustryInfo, hasIndustryMapping } from '@/lib/data/industries';
+import MarketStatusBanner from '@/components/common/MarketStatusBanner';
 
 interface PageProps {
   params: { stockCode: string };
@@ -64,6 +67,28 @@ export default async function StockDetailPage({ params }: PageProps) {
     fetchInvestorTrading(params.stockCode, naverData.price),
   ]);
 
+  // ⭐ 시장 상태 (장전/휴장 등)
+  const marketStatus = getMarketStatus();
+
+  // ⭐ 장전 데이터 패턴 감지 (시가=고가=저가, 변동 0원)
+  const isPreMarketData = isPreMarketDataPattern({
+    openPrice: naverData.openToday,
+    highPrice: naverData.highToday,
+    lowPrice: naverData.lowToday,
+    closePrice: naverData.price,
+    changePrice: naverData.change,
+  });
+
+  // ⭐ 업종 평균 PER/PBR 비교
+  const industryInfo = getIndustryInfo(params.stockCode);
+  const hasIndustry = hasIndustryMapping(params.stockCode);
+  const perDiff = naverData.per > 0 && industryInfo.avgPER > 0
+    ? ((naverData.per - industryInfo.avgPER) / industryInfo.avgPER) * 100
+    : null;
+  const pbrDiff = naverData.pbr > 0 && industryInfo.avgPBR > 0
+    ? ((naverData.pbr - industryInfo.avgPBR) / industryInfo.avgPBR) * 100
+    : null;
+
   // 52주 위치
   const pricePos = naverData.high52w > naverData.low52w
     ? Math.max(0, Math.min(100,
@@ -98,9 +123,6 @@ export default async function StockDetailPage({ params }: PageProps) {
   const targetUpside = cons?.targetPrice && cons.targetPrice > 0
     ? (cons.targetPrice - naverData.price) / naverData.price * 100
     : null;
-  // 목표가 게이지 위치 (현재가 마커)
-  // 게이지 범위: 하향목표가(왼쪽) ~ 평균목표가(오른쪽 고정)
-  // 현재가가 그 사이 어디 있는지
   const gaugePct = cons?.targetPrice && cons.targetPriceLow && cons.targetPrice > cons.targetPriceLow
     ? Math.max(5, Math.min(90,
         (naverData.price - cons.targetPriceLow) / (cons.targetPrice - cons.targetPriceLow) * 90
@@ -132,6 +154,9 @@ export default async function StockDetailPage({ params }: PageProps) {
 
   return (
     <>
+      {/* ⭐ 시장 상태 배너 (헤더 바로 위) */}
+      <MarketStatusBanner statusInfo={marketStatus} />
+
       {/* ── 1. 헤더 ── */}
       <div className="bg-emerald-900 rounded-2xl p-4 mb-3 text-white">
         <div className="flex justify-between items-start mb-3">
@@ -167,6 +192,12 @@ export default async function StockDetailPage({ params }: PageProps) {
             </div>
           ))}
         </div>
+        {/* ⭐ 장전 데이터 안내 (시가=고가=저가일 때) */}
+        {isPreMarketData && (
+          <div className="mt-3 pt-3 border-t border-white/10 text-[10px] text-amber-300 text-center">
+            ※ 장 시작 전이라 시가/고가/저가가 모두 어제 종가({fmtPrice(naverData.price)}원)로 표시됩니다
+          </div>
+        )}
       </div>
 
       {/* ── 2. AI 브리핑 (히어로) ── */}
@@ -312,21 +343,66 @@ export default async function StockDetailPage({ params }: PageProps) {
         </div>
       </div>
 
-      {/* ── 5. PER / PBR / 배당률 ── */}
+      {/* ── 5. PER / PBR / 배당률 ⭐ 동종업종 비교 추가 ── */}
       <div className="grid grid-cols-3 gap-2 mb-3">
-        {[
-          { emoji: '💼', label: 'PER',   sub: '주가 / 순이익',  val: naverData.per > 0 ? `${naverData.per.toFixed(1)}배` : '적자', extra: '' },
-          { emoji: '📈', label: 'PBR',   sub: '주가 / 순자산',  val: naverData.pbr > 0 ? `${naverData.pbr.toFixed(1)}배` : '-',    extra: '' },
-          { emoji: '💰', label: '배당률', sub: '연간 배당 / 주가', val: naverData.dividendYield > 0 ? `${naverData.dividendYield.toFixed(1)}%` : '-', extra: naverData.dividendYield > 0 ? '연간' : '' },
-        ].map(({ emoji, label, sub, val, extra }) => (
-          <div key={label} className="bg-white rounded-xl p-3 border border-slate-100 text-center">
-            <div className="text-base mb-1">{emoji}</div>
-            <div className="text-[11px] text-slate-500 mb-0.5">{label}</div>
-            <div className="text-[9px] text-slate-400 mb-2">{sub}</div>
-            <div className="text-[16px] font-medium">{val}</div>
-            {extra && <div className="text-[9px] text-emerald-700 font-medium mt-1">{extra}</div>}
+        {/* PER */}
+        <div className="bg-white rounded-xl p-3 border border-slate-100 text-center">
+          <div className="text-base mb-1">💼</div>
+          <div className="text-[11px] text-slate-500 mb-0.5">PER</div>
+          <div className="text-[9px] text-slate-400 mb-2">주가 / 순이익</div>
+          <div className="text-[16px] font-medium">
+            {naverData.per > 0 ? `${naverData.per.toFixed(1)}배` : '적자'}
           </div>
-        ))}
+          {hasIndustry && naverData.per > 0 && perDiff !== null && (
+            <>
+              <div className="text-[9px] text-slate-400 mt-1.5">{industryInfo.name} 평균 {industryInfo.avgPER.toFixed(1)}배</div>
+              <div className={`inline-block text-[9px] font-medium px-1.5 py-0.5 rounded mt-1 ${
+                perDiff < -10 ? 'bg-emerald-50 text-emerald-700' :
+                perDiff > 30 ? 'bg-red-50 text-red-700' :
+                'bg-slate-50 text-slate-600'
+              }`}>
+                {perDiff > 0 ? '+' : ''}{perDiff.toFixed(0)}%{' '}
+                {perDiff < -10 ? '저평가' : perDiff > 30 ? '고평가' : '적정'}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* PBR */}
+        <div className="bg-white rounded-xl p-3 border border-slate-100 text-center">
+          <div className="text-base mb-1">📈</div>
+          <div className="text-[11px] text-slate-500 mb-0.5">PBR</div>
+          <div className="text-[9px] text-slate-400 mb-2">주가 / 순자산</div>
+          <div className="text-[16px] font-medium">
+            {naverData.pbr > 0 ? `${naverData.pbr.toFixed(1)}배` : '-'}
+          </div>
+          {hasIndustry && naverData.pbr > 0 && pbrDiff !== null && (
+            <>
+              <div className="text-[9px] text-slate-400 mt-1.5">{industryInfo.name} 평균 {industryInfo.avgPBR.toFixed(1)}배</div>
+              <div className={`inline-block text-[9px] font-medium px-1.5 py-0.5 rounded mt-1 ${
+                pbrDiff < -10 ? 'bg-emerald-50 text-emerald-700' :
+                pbrDiff > 30 ? 'bg-red-50 text-red-700' :
+                'bg-slate-50 text-slate-600'
+              }`}>
+                {pbrDiff > 0 ? '+' : ''}{pbrDiff.toFixed(0)}%{' '}
+                {pbrDiff < -10 ? '저평가' : pbrDiff > 30 ? '고평가' : '적정'}
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* 배당률 */}
+        <div className="bg-white rounded-xl p-3 border border-slate-100 text-center">
+          <div className="text-base mb-1">💰</div>
+          <div className="text-[11px] text-slate-500 mb-0.5">배당률</div>
+          <div className="text-[9px] text-slate-400 mb-2">연간 배당 / 주가</div>
+          <div className="text-[16px] font-medium">
+            {naverData.dividendYield > 0 ? `${naverData.dividendYield.toFixed(1)}%` : '-'}
+          </div>
+          {naverData.dividendYield > 0 && (
+            <div className="text-[9px] text-emerald-700 font-medium mt-1">연간</div>
+          )}
+        </div>
       </div>
 
       {/* ── 6. 추세 · 수급 ── */}
@@ -371,14 +447,11 @@ export default async function StockDetailPage({ params }: PageProps) {
                 style={{ gridTemplateColumns: '52px 1fr 70px' }}>
                 <span className="text-[12px] font-medium">{label}</span>
                 <div>
-                  {/* 보유율 기반 게이지 */}
                   <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden mb-1">
-                    {/* 보유율 배경 (회색) */}
                     <div
                       className="absolute top-0 left-0 h-full bg-slate-300 rounded-full"
                       style={{ width: `${Math.min(pct, 100)}%` }}
                     />
-                    {/* 순매수/매도 오버레이 */}
                     {net !== 0 && (
                       <div
                         className={`absolute top-0 h-full rounded-full ${net >= 0 ? 'bg-red-500' : 'bg-blue-600'}`}
@@ -504,10 +577,8 @@ export default async function StockDetailPage({ params }: PageProps) {
                   <div className="absolute inset-y-1.5 left-0 right-0 rounded-full overflow-hidden"
                     style={{ background: 'linear-gradient(to right,#1d4ed8,#93c5fd,#d1d5db,#f87171,#dc2626)' }}>
                   </div>
-                  {/* 현재가 ■ */}
                   <div className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-slate-700 border-2 border-white rounded-sm z-10"
                     style={{ left: `calc(${gaugePct}% - 10px)` }} />
-                  {/* 목표가 ● */}
                   <div className="absolute top-1/2 -translate-y-1/2 w-5 h-5 bg-red-600 border-2 border-white rounded-full z-10"
                     style={{ right: '2%' }} />
                 </div>

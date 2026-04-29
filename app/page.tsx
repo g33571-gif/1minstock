@@ -1,9 +1,11 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import SearchBar from '@/components/home/SearchBar';
 import MarketIndices from '@/components/home/MarketIndices';
 import StockResultCard from '@/components/home/StockResultCard';
+import MarketStatusBanner from '@/components/common/MarketStatusBanner';
+import { getMarketStatus, MarketStatusInfo } from '@/lib/marketStatus';
 
 const MobileAd = () => (
   <div className="lg:hidden border border-dashed border-slate-200 rounded-xl p-3 text-center mb-4 bg-slate-50">
@@ -45,13 +47,23 @@ export default function HomePage() {
   const [result, setResult]   = useState<any>(null);
   const [error, setError]     = useState('');
   const [selectedName, setSelectedName] = useState('');
+  const [marketStatus, setMarketStatus] = useState<MarketStatusInfo | null>(null);
+
+  // 시장 상태는 클라이언트에서 판단 (SSR 시점과 클라이언트 시점이 다를 수 있음)
+  useEffect(() => {
+    setMarketStatus(getMarketStatus());
+    // 1분마다 갱신 (장 시작/마감 시점 자동 반영)
+    const interval = setInterval(() => {
+      setMarketStatus(getMarketStatus());
+    }, 60_000);
+    return () => clearInterval(interval);
+  }, []);
 
   const handleSelect = async (code: string, name: string) => {
     setSelectedName(name);
     setLoading(true);
     setResult(null);
     setError('');
-    // 페이지 맨 위로 스크롤 → 검색창이 항상 보임
     window.scrollTo({ top: 0, behavior: 'smooth' });
 
     try {
@@ -122,8 +134,11 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── 검색창 (항상 최상단, 히어로/미니헤더 바로 아래) ── */}
+      {/* ── 검색창 (항상 최상단) ── */}
       <SearchBar onSelect={handleSelect} selectedName={selectedName} />
+
+      {/* ── ⭐ 시장 상태 배너 (검색창 바로 아래) ── */}
+      {marketStatus && <MarketStatusBanner statusInfo={marketStatus} />}
 
       {/* ── 결과 없을 때 광고 ── */}
       {!showResult && (
@@ -133,7 +148,7 @@ export default function HomePage() {
         </>
       )}
 
-      {/* ── 결과 영역 (검색창 바로 아래 바로 붙음) ── */}
+      {/* ── 결과 영역 ── */}
       {loading && <ResultSkeleton name={selectedName} />}
 
       {!loading && error && (
