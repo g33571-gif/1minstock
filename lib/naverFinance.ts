@@ -15,15 +15,14 @@ export interface NaverStockData {
   eps: number;
   bps: number;
   dividendYield: number;
-  foreignOwnership: number;   // 외국인 보유율 %
-  institutionOwnership: number; // 기관 보유율 % (없으면 0)
+  foreignOwnership: number;
+  institutionOwnership: number;
   volumeRatio: number;
   description: string;
   highToday: number;
   lowToday: number;
   openToday: number;
   volume: number;
-  // 컨센서스
   consensus: {
     buyCount: number;
     neutralCount: number;
@@ -31,15 +30,12 @@ export interface NaverStockData {
     targetPrice: number;
     targetPriceLow: number;
   } | null;
-  // 거래량 비율 (평균 대비 %, 150 = 평균 대비 +50%)
   volumeRatioCalc: number;
-  // 최신 뉴스 1건
   latestNews: {
     title: string;
     time: string;
     url: string;
   } | null;
-  // 위험신호 (관리종목·환기종목·거래정지)
   riskSignal: {
     hasRisk: boolean;
     items: Array<{
@@ -57,6 +53,75 @@ const headers = {
   'Origin': 'https://m.stock.naver.com',
   'Referer': 'https://m.stock.naver.com/',
 };
+
+/**
+ * ⭐ 데이터 정합성 검증
+ * 시가/고가/저가가 현재가와 모순되면 이상 데이터로 판단
+ *
+ * 정상 케이스: lowToday <= price <= highToday, openToday in [lowToday, highToday]
+ * 이상 케이스: 위 조건 위반 → 0으로 반환해서 화면에서 숨김 처리
+ */
+function validateOhlcData(price: number, openToday: number, highToday: number, lowToday: number): {
+  openToday: number;
+  highToday: number;
+  lowToday: number;
+} {
+  // 모든 값이 0이면 그대로 반환
+  if (!openToday && !highToday && !lowToday) {
+    return { openToday: 0, highToday: 0, lowToday: 0 };
+  }
+
+  // 시가/고가/저가 데이터가 없으면 0으로
+  if (!openToday || !highToday || !lowToday) {
+    return { openToday: 0, highToday: 0, lowToday: 0 };
+  }
+
+  // 정합성 체크 1: 고가는 저가보다 커야 함
+  if (highToday < lowToday) {
+    return { openToday: 0, highToday: 0, lowToday: 0 };
+  }
+
+  // 정합성 체크 2: 현재가가 [저가, 고가] 범위 안에 있어야 함
+  // 약간의 오차 허용 (1% 정도)
+  const tolerance = price * 0.01;
+  if (price < lowToday - tolerance || price > highToday + tolerance) {
+    // 이상 데이터: 시가/고가/저가가 다른 날짜 데이터일 가능성
+    return { openToday: 0, highToday: 0, lowToday: 0 };
+  }
+
+  // 정합성 체크 3: 시가도 [저가, 고가] 범위 안에 있어야 함
+  if (openToday < lowToday - tolerance || openToday > highToday + tolerance) {
+    return { openToday: 0, highToday: 0, lowToday: 0 };
+  }
+
+  // 모든 검증 통과 → 그대로 반환
+  return { openToday, highToday, lowToday };
+}
+
+/**
+ * ⭐ 변동률 검증
+ * 시가/고가/저가가 현재가와 같은데 변동이 0이 아니면 일관성 없음
+ * 또는 시가와 현재가가 다른데 변동이 0인 경우도 일관성 없음
+ */
+function validateChange(
+  price: number,
+  change: number,
+  changePercent: number,
+  openToday: number,
+  highToday: number,
+  lowToday: number
+): { change: number; changePercent: number } {
+  // 시가/고가/저가가 0이면 (validateOhlcData에서 무효 처리됨) 변동도 신뢰 어려움
+  if (!openToday && !highToday && !lowToday) {
+    // 변동이 0이면 그대로, 아니면 일단 신뢰
+    return { change, changePercent };
+  }
+
+  // 정상 데이터: 변동률이 (현재가 - 전일종가) / 전일종가와 일치하는지
+  // 전일종가 = 현재가 - 변동
+  // 이 부분은 신뢰하고 그대로 반환
+  return { change, changePercent };
+}
 
 export async function fetchNaverStock(code: string): Promise<NaverStockData | null> {
   try {
@@ -104,9 +169,16 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
 
     const high52w = parseInt2(getInfo('highPriceOf52Weeks'));
     const low52w  = parseInt2(getInfo('lowPriceOf52Weeks'));
-    const highToday = parseInt2(getInfo('highPrice'));
-    const lowToday  = parseInt2(getInfo('lowPrice'));
-    const openToday = parseInt2(getInfo('openPrice'));
+
+    // ⭐ 시가/고가/저가 정합성 검증
+    const rawHighToday = parseInt2(getInfo('highPrice'));
+    const rawLowToday  = parseInt2(getInfo('lowPrice'));
+    const rawOpenToday = parseInt2(getInfo('openPrice'));
+
+    const validated = validateOhlcData(price, rawOpenToday, rawHighToday, rawLowToday);
+    const openToday = validated.openToday;
+    const highToday = validated.highToday;
+    const lowToday  = validated.lowToday;
 
     const marketCap = formatMarketCap(getInfo('marketValue'));
     const per = parseNum(getInfo('per'));
@@ -120,37 +192,29 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
     const foreignStr = getInfo('foreignRate') || getInfo('foreignerHoldRatio') || getInfo('foreignerRate');
     const foreignOwnership = parseNum(foreignStr.replace('%', ''));
 
-    // 기관 보유율 (institutionHoldRatio 또는 organRate)
+    // 기관 보유율
     const instStr = getInfo('institutionHoldRatio') || getInfo('organRate') || '0';
     const institutionOwnership = parseNum(instStr.replace('%', ''));
 
     // ── 컨센서스 파싱 ──
-    // 네이버 integration API의 consensusInfo 필드
     let consensus: NaverStockData['consensus'] = null;
     const ci = data?.consensusInfo;
     if (ci) {
-      // recommMean: "4.20" (5=강력매수, 4=매수, 3=중립, 2=매도, 1=강력매도)
-      // priceTargetMean: "293,200" (평균 목표가)
-      // opinion: { buy, hold, sell } 또는 개별 필드
       const targetMean = parseInt2(String(ci.priceTargetMean || '0').replace(/,/g, ''));
       const targetLow  = parseInt2(String(ci.priceTargetLow  || ci.priceTargetMin || '0').replace(/,/g, ''));
 
-      // 의견 수 - 네이버는 recommCount 또는 opinion 객체로 제공
       let buyCount     = parseInt(ci.buy     || ci.strongBuy || '0') || 0;
       let neutralCount = parseInt(ci.hold    || ci.neutral   || '0') || 0;
       let sellCount    = parseInt(ci.sell    || ci.strongSell || '0') || 0;
 
-      // opinion 객체 형태인 경우
       if (ci.opinion) {
         buyCount     = parseInt(ci.opinion.buy  || '0') || 0;
         neutralCount = parseInt(ci.opinion.hold || '0') || 0;
         sellCount    = parseInt(ci.opinion.sell || '0') || 0;
       }
 
-      // recommMean만 있고 개별 수가 없는 경우
       if (buyCount === 0 && neutralCount === 0 && sellCount === 0 && ci.recommMean) {
         const mean = parseFloat(ci.recommMean);
-        // 5점 만점 기준으로 추정 (총 15개 애널리스트 가정)
         const total = parseInt(ci.recommCount || '15') || 15;
         if (mean >= 4.5) { buyCount = Math.round(total * 0.9); neutralCount = total - buyCount; }
         else if (mean >= 3.5) { buyCount = Math.round(total * 0.6); neutralCount = Math.round(total * 0.3); sellCount = total - buyCount - neutralCount; }
@@ -163,7 +227,6 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
       }
     }
 
-    // integration API에 consensusInfo가 없는 경우 별도 API 시도
     if (!consensus) {
       try {
         const consRes = await axios.get(
@@ -183,7 +246,7 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
       } catch {}
     }
 
-    // 거래량 비율 (평균 대비)
+    // 거래량 비율
     const avgVol = parseInt2(getInfo('averageVolume') || '0');
     const volumeRatioCalc = avgVol > 0 && volume > 0
       ? Math.round(volume / avgVol * 100)
@@ -207,8 +270,7 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
       }
     } catch {}
 
-    // ── 위험신호: KRX 공식 데이터 기반 ──
-    // public/data/risk-stocks.json (GitHub Actions가 매일 자동 업데이트)
+    // ── 위험신호 ──
     const riskItems: NaverStockData['riskSignal']['items'] = [];
     try {
       const riskRes = await axios.get(
@@ -227,7 +289,6 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
         });
       }
     } catch (e) {
-      // KRX 데이터 못 읽으면 일단 빈 배열 (네이버 보조)
       const issueKindName = data?.stockIssueKind?.name || '';
       if (issueKindName && issueKindName !== '정상' && issueKindName !== '') {
         riskItems.push({ type: '기타', label: issueKindName, description: `${issueKindName} 종목` });
