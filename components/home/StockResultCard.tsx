@@ -1,8 +1,5 @@
 'use client';
 
-import { useEffect, useState } from 'react';
-import { getMarketStatus, MarketStatusInfo } from '@/lib/marketStatus';
-
 interface ValuationCompare {
   industryName: string;
   myValue: number;
@@ -14,6 +11,7 @@ interface ValuationCompare {
 
 interface StockResult {
   code: string; name: string; market: string;
+  industryName: string | null;
   price: number; change: number; changePercent: number;
   openToday: number; highToday: number; lowToday: number;
   marketCap: string; volume: number; volumeRatio: number;
@@ -28,196 +26,61 @@ interface StockResult {
   latestNews: { title: string; time: string; url: string } | null;
   riskSignal: {
     hasRisk: boolean;
-    items: Array<{ type: string; label: string; description: string }>;
+    level: 'critical_unbuyable' | 'critical' | 'warning' | 'caution' | 'info' | null;
+    items: Array<{
+      level?: string;
+      type: string;
+      label: string;
+      color: 'black' | 'red' | 'orange' | 'amber' | 'gray' | 'blue';
+      description: string;
+      caution?: string;
+    }>;
   };
 }
 
 function fmt(n: number) { return n.toLocaleString('ko-KR'); }
 
-function fmtAmt(n: number) {
-  const abs = Math.abs(n);
-  const sign = n >= 0 ? '+' : '-';
-  if (abs >= 100_000_000_000) return `${sign}${(abs/100_000_000_000).toFixed(1)}조`;
-  if (abs >= 100_000_000)     return `${sign}${(abs/100_000_000).toFixed(1)}억`;
-  if (abs >= 10_000)           return `${sign}${(abs/10_000).toFixed(0)}만`;
-  return n !== 0 ? `${sign}${abs.toLocaleString('ko-KR')}` : '-';
-}
-
-function SupplyBar({ label, days, amount, max }: {
-  label: string; days: number; amount: number; max: number;
-}) {
-  const isBuy = amount >= 0;
-  const pct = max > 0 ? Math.min(100, Math.abs(amount) / max * 100) : 0;
-  const color = isBuy ? '#dc2626' : '#1d4ed8';
-  const bgColor = isBuy ? 'bg-red-50' : 'bg-blue-50';
-  const txtColor = isBuy ? 'text-red-700' : 'text-blue-700';
-
-  return (
-    <div className="mb-2.5">
-      <div className="flex justify-between items-center mb-1.5">
-        <div className="flex items-center gap-1.5">
-          <span className="text-[12px] font-medium text-slate-800 min-w-[40px]">{label}</span>
-          {days > 0 && amount !== 0 && (
-            <span className={`text-[9px] px-1.5 py-0.5 rounded font-medium ${bgColor} ${txtColor}`}>
-              {days}일{isBuy ? '↑' : '↓'}
-            </span>
-          )}
-        </div>
-        <span className={`text-[11px] font-medium`} style={{ color: amount === 0 ? '#94a3b8' : color }}>
-          {amount === 0 ? '-' : fmtAmt(amount)}
-        </span>
-      </div>
-      <div className="relative h-2 bg-slate-100 rounded-full overflow-hidden">
-        <div className="absolute top-0 left-1/2 w-px h-full bg-slate-300"></div>
-        {amount !== 0 && (
-          <div
-            className="absolute top-0 h-full rounded-full"
-            style={{
-              backgroundColor: color,
-              width: `${pct / 2}%`,
-              [isBuy ? 'left' : 'right']: '50%',
-            }}
-          />
-        )}
-      </div>
-    </div>
-  );
-}
-
-// 시장 상태 라벨
-function MarketStatusBadge({ status }: { status: MarketStatusInfo }) {
-  if (!status.showBanner) return null;
-
-  const colors = {
-    PRE_OPEN:  { bg: 'bg-blue-500/20',   dot: 'bg-blue-300',   text: 'text-blue-200' },
-    CLOSED:    { bg: 'bg-slate-500/20',  dot: 'bg-slate-300',  text: 'text-slate-200' },
-    WEEKEND:   { bg: 'bg-amber-500/20',  dot: 'bg-amber-300',  text: 'text-amber-200' },
-    HOLIDAY:   { bg: 'bg-amber-500/20',  dot: 'bg-amber-300',  text: 'text-amber-200' },
-    OPEN:      { bg: 'bg-emerald-500/20',dot: 'bg-emerald-300',text: 'text-emerald-200' },
-  }[status.status];
-
-  return (
-    <span
-      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full ${colors.bg}`}
-      title={status.description}
-    >
-      <span className={`w-1 h-1 rounded-full ${colors.dot}`}></span>
-      <span className={`text-[9px] font-medium ${colors.text}`}>{status.label}</span>
-    </span>
-  );
-}
-
 export default function StockResultCard({ data, onClose }: {
   data: StockResult; onClose: () => void;
 }) {
-  const [marketStatus, setMarketStatus] = useState<MarketStatusInfo | null>(null);
-
-  useEffect(() => {
-    setMarketStatus(getMarketStatus());
-    const interval = setInterval(() => setMarketStatus(getMarketStatus()), 60_000);
-    return () => clearInterval(interval);
-  }, []);
-
-  // ⭐ 변동 데이터 신뢰성 검증
-  // 변동이 0인데 시가가 현재가와 다르면 데이터 일관성 깨짐 → 변동 박스 숨김
-  // 또는 장중이 아닌 시간대(장전/장후/주말/휴장)에는 "전일 종가" 표시
-  const isMarketOpen = marketStatus?.status === 'OPEN';
-  const hasOhlcData = data.openToday > 0 && data.highToday > 0 && data.lowToday > 0;
-
-  // ⭐ 변동 박스 표시 여부 결정 (강화된 로직)
-  // 변동 0원/0%면 데이터가 신뢰할 수 없는 상태이므로 숨김 처리
-  // (장중이라도 진짜로 변동 0인 경우는 매우 드물고, 보통 데이터 미갱신 상태)
-  const showChangeBox = (data.change !== 0 || data.changePercent !== 0);
-
-  // 변동이 0이면 라벨 표시 (장 상태에 따라 다른 메시지)
-  const showFlatLabel = !showChangeBox;
-  const flatLabel = isMarketOpen
-    ? '데이터 갱신 중'   // 장중인데 변동 0 → 보통 캐시 갱신 대기 상태
-    : '전일 종가 기준'; // 장 외
-
-  const isUp = data.changePercent >= 0;
-
   const posLabel =
     data.pricePos <= 20 ? '저점 근처' :
     data.pricePos <= 40 ? '저점~중간' :
     data.pricePos <= 60 ? '중간 구간' :
     data.pricePos <= 80 ? '중간~고점' : '고점 근처';
 
-  const supplyMax = Math.max(
-    Math.abs(data.foreign5d),
-    Math.abs(data.institution5d),
-    Math.abs(data.individual5d),
-    1
-  );
+  // 최저가 대비 / 최고가 대비
+  const fromLow = data.low52w > 0
+    ? Math.round(((data.price - data.low52w) / data.low52w) * 100)
+    : 0;
+  const fromHigh = data.high52w > 0
+    ? Math.round(((data.price - data.high52w) / data.high52w) * 100)
+    : 0;
 
   return (
     <div style={{ animation: 'slideDown 0.25s ease' }}>
       <style>{`@keyframes slideDown{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}`}</style>
 
-      {/* 헤더 */}
-      <div className="bg-emerald-900 rounded-2xl p-4 mb-3 text-white">
-        <div className="flex justify-between items-start mb-3">
-          <div className="min-w-0 flex-1">
-            <div className="flex items-center gap-2 mb-1 flex-wrap">
-              <span className="text-[11px] text-emerald-300">{data.market} · {data.code}</span>
-              {marketStatus && <MarketStatusBadge status={marketStatus} />}
-            </div>
-            <div className="text-xl font-medium mb-2">{data.name}</div>
-            <div className="flex items-baseline gap-2">
-              <span className="text-[28px] font-medium leading-none">{fmt(data.price)}</span>
-              <span className="text-[12px] text-emerald-300">원</span>
-            </div>
-            {/* ⭐ 변동 0일 때 라벨 표시 (장중: "데이터 갱신 중" / 장 외: "전일 종가 기준") */}
-            {showFlatLabel && (
-              <div className="text-[10px] text-emerald-300/70 mt-1">{flatLabel}</div>
-            )}
-          </div>
-
-          {/* ⭐ 변동 박스: 신뢰할 만한 데이터일 때만 표시 */}
-          {showChangeBox && (
-            <div className={`rounded-lg px-3 py-2 text-center flex-shrink-0 ${isUp ? 'bg-red-500/30' : 'bg-blue-600/30'}`}>
-              <div className={`text-[13px] font-medium ${isUp ? 'text-red-300' : 'text-blue-300'}`}>
-                {isUp ? '▲' : '▼'} {Math.abs(data.changePercent).toFixed(2)}%
-              </div>
-              <div className={`text-[11px] ${isUp ? 'text-red-300' : 'text-blue-300'}`}>
-                {isUp ? '+' : ''}{fmt(data.change)}원
-              </div>
-            </div>
-          )}
+      {/* 헤더 - 종목 정보만 (가격/장상태 라벨 모두 제거) */}
+      <div className="bg-emerald-900 rounded-2xl p-5 mb-3 text-white">
+        <div className="mb-2">
+          <span className="text-[11px] text-emerald-300">{data.market} · {data.code}</span>
         </div>
-
-        {/* ⭐ 시가/고가/저가/시총 - OHLC 데이터 있을 때만 표시 */}
-        {hasOhlcData ? (
-          <div className="border-t border-white/10 pt-3 grid grid-cols-4 gap-1 text-center">
-            {[
-              { label: '시가', val: fmt(data.openToday), color: 'text-white' },
-              { label: '고가', val: fmt(data.highToday), color: 'text-red-300' },
-              { label: '저가', val: fmt(data.lowToday),  color: 'text-blue-300' },
-              { label: '시총', val: data.marketCap, color: 'text-white' },
-            ].map(({ label, val, color }) => (
-              <div key={label}>
-                <div className="text-[9px] text-emerald-300 mb-1">{label}</div>
-                <div className={`text-[11px] font-medium ${color}`}>{val}</div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          // OHLC 데이터 없으면 시총만 표시
-          <div className="border-t border-white/10 pt-3 flex justify-between items-center">
-            <div className="text-[10px] text-emerald-300/70">
-              {isMarketOpen
-                ? '시세 데이터 로딩 중'
-                : '장 외 시간 · 시가/고가/저가는 거래일에 표시됩니다'}
-            </div>
-            <div className="text-right">
-              <div className="text-[9px] text-emerald-300 mb-0.5">시총</div>
-              <div className="text-[11px] font-medium text-white">{data.marketCap}</div>
-            </div>
-          </div>
-        )}
+        <div className="text-[24px] font-medium mb-2 leading-tight">{data.name}</div>
+        <div className="flex items-center gap-2 text-[12px] text-emerald-200 flex-wrap">
+          {data.industryName && (
+            <>
+              <span className="bg-emerald-700/40 px-2 py-0.5 rounded-full text-[11px]">
+                {data.industryName}
+              </span>
+              <span className="text-emerald-400/50">·</span>
+            </>
+          )}
+          <span>시총 {data.marketCap}</span>
+        </div>
       </div>
 
-      {/* AI 브리핑 */}
+      {/* AI 브리핑 - 메인 무기 */}
       <div className="bg-emerald-900 rounded-2xl p-4 mb-3 border-2 border-amber-400">
         <div className="flex items-center gap-2 mb-3">
           <div className="bg-amber-400 rounded-md px-2.5 py-1 flex items-center gap-1.5 flex-shrink-0">
@@ -246,8 +109,7 @@ export default function StockResultCard({ data, onClose }: {
           </div>
         ) : (
           <p className="text-[12px] text-emerald-200">
-            {data.market} 상장 · {fmt(data.price)}원
-            {data.per > 0 ? ` · PER ${data.per.toFixed(1)}배` : ''}
+            {data.market} 상장 · 공개 데이터 분석 준비 중
           </p>
         )}
         <p className="text-[9px] text-emerald-400/50 mt-2">
@@ -255,42 +117,134 @@ export default function StockResultCard({ data, onClose }: {
         </p>
       </div>
 
-      {/* 위험신호 */}
-      {data.riskSignal?.hasRisk && (
-        <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 mb-3">
-          <div className="flex items-center gap-2 mb-2">
-            <div className="w-7 h-7 bg-red-600 rounded-full flex items-center justify-center flex-shrink-0">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
-                <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
-              </svg>
-            </div>
-            <div>
-              <div className="text-[13px] font-medium text-red-900">위험 신호 {data.riskSignal.items.length}건</div>
-              <div className="text-[10px] text-red-700">투자에 신중한 검토가 필요합니다</div>
-            </div>
-          </div>
-          <div className="space-y-1.5">
-            {data.riskSignal.items.map((r, i) => (
-              <div key={i} className="flex items-start gap-2 bg-white rounded-lg p-2.5 border-l-[3px] border-red-600">
-                <span className="text-[10px] px-2 py-0.5 bg-red-600 text-white rounded-full font-medium flex-shrink-0">{r.label}</span>
-                <span className="text-[11px] text-red-900 leading-snug">{r.description}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-      )}
+      {/* ⭐ 위험신호 - KRX 공식 데이터 기반 5단계 레벨 표시 */}
+      {data.riskSignal?.hasRisk && (() => {
+        const level = data.riskSignal.level;
+        const styles: Record<string, any> = {
+          critical_unbuyable: {
+            bg: 'bg-slate-900',
+            border: 'border-slate-900',
+            iconBg: 'bg-red-600',
+            titleColor: 'text-white',
+            descColor: 'text-red-300',
+            title: `🚨 매수 불가 종목`,
+            subtitle: '거래 자체가 정지되었거나 상장폐지 진행 중',
+            cardBg: 'bg-slate-800',
+            cardText: 'text-white',
+          },
+          critical: {
+            bg: 'bg-red-50',
+            border: 'border-red-500',
+            iconBg: 'bg-red-600',
+            titleColor: 'text-red-900',
+            descColor: 'text-red-700',
+            title: `매우 위험 ${data.riskSignal.items.length}건`,
+            subtitle: '투자 시 매우 큰 위험이 따를 수 있습니다',
+            cardBg: 'bg-white',
+            cardText: 'text-slate-800',
+          },
+          warning: {
+            bg: 'bg-orange-50',
+            border: 'border-orange-500',
+            iconBg: 'bg-orange-500',
+            titleColor: 'text-orange-900',
+            descColor: 'text-orange-700',
+            title: `투자 경고 ${data.riskSignal.items.length}건`,
+            subtitle: '주가 변동이 크거나 위험성이 있는 종목',
+            cardBg: 'bg-white',
+            cardText: 'text-slate-800',
+          },
+          caution: {
+            bg: 'bg-amber-50',
+            border: 'border-amber-400',
+            iconBg: 'bg-amber-500',
+            titleColor: 'text-amber-900',
+            descColor: 'text-amber-700',
+            title: `투자 주의 ${data.riskSignal.items.length}건`,
+            subtitle: '투자 위험성을 검토하세요',
+            cardBg: 'bg-white',
+            cardText: 'text-slate-800',
+          },
+          info: {
+            bg: 'bg-slate-50',
+            border: 'border-slate-300',
+            iconBg: 'bg-slate-500',
+            titleColor: 'text-slate-900',
+            descColor: 'text-slate-700',
+            title: '특이 종목 안내',
+            subtitle: '일반 종목과 성격이 다른 종목',
+            cardBg: 'bg-white',
+            cardText: 'text-slate-800',
+          },
+        };
+        const s = styles[level || 'info'] || styles.info;
+        const itemColors: Record<string, string> = {
+          black: 'bg-slate-900 text-white',
+          red: 'bg-red-600 text-white',
+          orange: 'bg-orange-500 text-white',
+          amber: 'bg-amber-500 text-white',
+          gray: 'bg-slate-500 text-white',
+          blue: 'bg-blue-500 text-white',
+        };
+        const borderColors: Record<string, string> = {
+          black: 'border-slate-900',
+          red: 'border-red-600',
+          orange: 'border-orange-500',
+          amber: 'border-amber-500',
+          gray: 'border-slate-500',
+          blue: 'border-blue-500',
+        };
 
-      {/* 1년 가격 위치 */}
+        return (
+          <div className={`${s.bg} border-2 ${s.border} rounded-2xl p-4 mb-3`}>
+            <div className="flex items-center gap-2 mb-2.5">
+              <div className={`w-7 h-7 ${s.iconBg} rounded-full flex items-center justify-center flex-shrink-0`}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+                  <path d="M12 9v4M12 17h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z" stroke="white" strokeWidth="2.5" strokeLinecap="round"/>
+                </svg>
+              </div>
+              <div>
+                <div className={`text-[13px] font-medium ${s.titleColor}`}>{s.title}</div>
+                <div className={`text-[10px] ${s.descColor}`}>{s.subtitle}</div>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              {data.riskSignal.items.map((r, i) => (
+                <div key={i} className={`${s.cardBg} rounded-lg p-2.5 border-l-[3px] ${borderColors[r.color] || 'border-slate-500'}`}>
+                  <div className="flex items-start gap-2 mb-1">
+                    <span className={`text-[10px] px-2 py-0.5 ${itemColors[r.color] || 'bg-slate-500 text-white'} rounded-full font-medium flex-shrink-0`}>
+                      {r.label}
+                    </span>
+                    <span className={`text-[11px] leading-snug font-medium ${s.cardText}`}>{r.description}</span>
+                  </div>
+                  {r.caution && (
+                    <div className={`text-[10px] ml-1 ${level === 'critical_unbuyable' ? 'text-red-200' : 'text-slate-500'}`}>※ {r.caution}</div>
+                  )}
+                </div>
+              ))}
+            </div>
+            <div className={`text-[9px] mt-2 text-right ${level === 'critical_unbuyable' ? 'text-slate-400' : 'text-slate-500'}`}>
+              출처: 한국거래소 KRX 공식 데이터
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* 1년 가격 위치 - 참고가 큼직하게 */}
       <div className="bg-white rounded-2xl p-4 mb-3 border border-slate-100">
-        <div className="text-[12px] font-medium text-slate-800 mb-2 flex items-center gap-1.5">
+        <div className="text-[12px] font-medium text-slate-800 mb-3 flex items-center gap-1.5">
           <span>📊</span> 1년 가격 위치
         </div>
-        <div className="relative h-3 rounded-full overflow-visible mb-2"
+
+        {/* 게이지 */}
+        <div className="relative h-3 rounded-full overflow-visible mb-3"
           style={{ background: 'linear-gradient(to right,#1d4ed8,#9ca3af 50%,#dc2626)' }}>
           <div className="absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white border-[3px] border-emerald-700 rounded-full"
             style={{ left: `clamp(0px, calc(${data.pricePos}% - 8px), calc(100% - 16px))` }} />
         </div>
-        <div className="flex justify-between items-center mb-1">
+
+        {/* 최저/최고 */}
+        <div className="flex justify-between items-center mb-4">
           <div>
             <div className="text-[9px] text-blue-600 font-medium">최저</div>
             <div className="text-[11px] font-medium">{fmt(data.low52w)}원</div>
@@ -303,24 +257,52 @@ export default function StockResultCard({ data, onClose }: {
             <div className="text-[11px] font-medium">{fmt(data.high52w)}원</div>
           </div>
         </div>
-        <div className="flex justify-between">
-          <span className="text-[10px] text-slate-400">최저 대비 +{data.pricePos}%</span>
-          <span className="text-[10px] text-slate-400">최고 대비 -{100 - data.pricePos}%</span>
+
+        {/* 참고가 - 큼직하게 */}
+        <div className="bg-emerald-50 rounded-xl p-4 mb-2">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-[11px] text-emerald-700 font-medium">📍 참고가</span>
+            <span className="text-[9px] text-emerald-600/70">약 15~20분 지연</span>
+          </div>
+          <div className="text-[28px] font-medium text-emerald-900 leading-none mb-2">
+            {fmt(data.price)}<span className="text-[14px] text-emerald-700 ml-1">원</span>
+          </div>
+          <div className="flex items-center gap-3 text-[11px]">
+            <span className={`font-medium ${fromLow >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
+              최저 대비 {fromLow >= 0 ? '+' : ''}{fromLow}%
+            </span>
+            <span className="text-slate-300">/</span>
+            <span className={`font-medium ${fromHigh >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
+              최고 대비 {fromHigh >= 0 ? '+' : ''}{fromHigh}%
+            </span>
+          </div>
         </div>
+
+        <p className="text-[10px] text-slate-400 text-center mt-2">
+          ※ 최신 실시간 가격은 증권사 앱에서 확인하세요
+        </p>
       </div>
 
-      {/* 5일 수급 막대 그래프 */}
-      <div className="bg-white rounded-2xl p-4 mb-3 border border-slate-100">
-        <div className="flex items-center justify-between mb-3">
-          <div className="text-[12px] font-medium text-slate-800 flex items-center gap-1.5">
-            <span>👥</span> 5일 수급 동향
+      {/* 최신 뉴스 */}
+      {data.latestNews && (
+        <div className="bg-white rounded-2xl p-4 mb-3 border border-slate-100">
+          <div className="text-[12px] font-medium text-slate-800 mb-2 flex items-center gap-1.5">
+            <span>📰</span> 최신 뉴스
           </div>
-          <span className="text-[9px] text-slate-400">빨강=매수 · 파랑=매도</span>
+          <a href={data.latestNews.url} target="_blank" rel="noopener noreferrer"
+            className="flex items-start gap-3 bg-slate-50 rounded-xl p-3 no-underline block">
+            <div className="flex-1 min-w-0">
+              <p className="text-[12px] font-medium text-slate-800 leading-snug mb-1 m-0 line-clamp-2">
+                {data.latestNews.title}
+              </p>
+              <p className="text-[10px] text-slate-400 m-0">{data.latestNews.time} · 네이버 금융</p>
+            </div>
+            <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>
+            </svg>
+          </a>
         </div>
-        <SupplyBar label="외국인" days={data.foreignConsecutiveDays} amount={data.foreign5d} max={supplyMax} />
-        <SupplyBar label="기관"   days={data.institutionConsecutiveDays} amount={data.institution5d} max={supplyMax} />
-        <SupplyBar label="개인"   days={0} amount={data.individual5d} max={supplyMax} />
-      </div>
+      )}
 
       {/* 핵심 지표 */}
       <div className="text-[11px] font-medium text-slate-400 mb-2 px-0.5">핵심 지표</div>
@@ -458,27 +440,6 @@ export default function StockResultCard({ data, onClose }: {
           </div>
         )}
       </div>
-
-      {/* 최신 뉴스 */}
-      {data.latestNews && (
-        <div className="bg-white rounded-2xl p-4 mb-3 border border-slate-100">
-          <div className="text-[12px] font-medium text-slate-800 mb-2 flex items-center gap-1.5">
-            <span>📰</span> 최신 뉴스
-          </div>
-          <a href={data.latestNews.url} target="_blank" rel="noopener noreferrer"
-            className="flex items-start gap-3 bg-slate-50 rounded-xl p-3 no-underline block">
-            <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-medium text-slate-800 leading-snug mb-1 m-0 line-clamp-2">
-                {data.latestNews.title}
-              </p>
-              <p className="text-[10px] text-slate-400 m-0">{data.latestNews.time} · 네이버 금융</p>
-            </div>
-            <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>
-            </svg>
-          </a>
-        </div>
-      )}
 
       <div className="text-center text-[10px] text-slate-400 py-1">
         ※ 공개 데이터 요약 · 약 15~20분 지연 · 투자 자문 아님 · 판단은 본인 책임

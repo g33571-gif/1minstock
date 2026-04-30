@@ -38,10 +38,13 @@ export interface NaverStockData {
   } | null;
   riskSignal: {
     hasRisk: boolean;
+    level: 'critical' | 'warning' | 'info' | null;  // ⭐ 새 필드
     items: Array<{
       type: string;
       label: string;
+      color: 'red' | 'amber' | 'gray' | 'blue';  // ⭐ 새 필드
       description: string;
+      caution?: string;  // ⭐ 새 필드
     }>;
   };
 }
@@ -54,73 +57,28 @@ const headers = {
   'Referer': 'https://m.stock.naver.com/',
 };
 
-/**
- * ⭐ 데이터 정합성 검증
- * 시가/고가/저가가 현재가와 모순되면 이상 데이터로 판단
- *
- * 정상 케이스: lowToday <= price <= highToday, openToday in [lowToday, highToday]
- * 이상 케이스: 위 조건 위반 → 0으로 반환해서 화면에서 숨김 처리
- */
 function validateOhlcData(price: number, openToday: number, highToday: number, lowToday: number): {
   openToday: number;
   highToday: number;
   lowToday: number;
 } {
-  // 모든 값이 0이면 그대로 반환
   if (!openToday && !highToday && !lowToday) {
     return { openToday: 0, highToday: 0, lowToday: 0 };
   }
-
-  // 시가/고가/저가 데이터가 없으면 0으로
   if (!openToday || !highToday || !lowToday) {
     return { openToday: 0, highToday: 0, lowToday: 0 };
   }
-
-  // 정합성 체크 1: 고가는 저가보다 커야 함
   if (highToday < lowToday) {
     return { openToday: 0, highToday: 0, lowToday: 0 };
   }
-
-  // 정합성 체크 2: 현재가가 [저가, 고가] 범위 안에 있어야 함
-  // 약간의 오차 허용 (1% 정도)
   const tolerance = price * 0.01;
   if (price < lowToday - tolerance || price > highToday + tolerance) {
-    // 이상 데이터: 시가/고가/저가가 다른 날짜 데이터일 가능성
     return { openToday: 0, highToday: 0, lowToday: 0 };
   }
-
-  // 정합성 체크 3: 시가도 [저가, 고가] 범위 안에 있어야 함
   if (openToday < lowToday - tolerance || openToday > highToday + tolerance) {
     return { openToday: 0, highToday: 0, lowToday: 0 };
   }
-
-  // 모든 검증 통과 → 그대로 반환
   return { openToday, highToday, lowToday };
-}
-
-/**
- * ⭐ 변동률 검증
- * 시가/고가/저가가 현재가와 같은데 변동이 0이 아니면 일관성 없음
- * 또는 시가와 현재가가 다른데 변동이 0인 경우도 일관성 없음
- */
-function validateChange(
-  price: number,
-  change: number,
-  changePercent: number,
-  openToday: number,
-  highToday: number,
-  lowToday: number
-): { change: number; changePercent: number } {
-  // 시가/고가/저가가 0이면 (validateOhlcData에서 무효 처리됨) 변동도 신뢰 어려움
-  if (!openToday && !highToday && !lowToday) {
-    // 변동이 0이면 그대로, 아니면 일단 신뢰
-    return { change, changePercent };
-  }
-
-  // 정상 데이터: 변동률이 (현재가 - 전일종가) / 전일종가와 일치하는지
-  // 전일종가 = 현재가 - 변동
-  // 이 부분은 신뢰하고 그대로 반환
-  return { change, changePercent };
 }
 
 export async function fetchNaverStock(code: string): Promise<NaverStockData | null> {
@@ -151,7 +109,6 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
     const parseInt2 = (val: string): number =>
       parseInt(String(val).replace(/,/g, '')) || 0;
 
-    // 0원 버그 방지: closePrice가 0이면 다른 키로 fallback
     const rawClose = parseInt2(getInfo('closePrice'));
     const price = rawClose > 0
       ? rawClose
@@ -170,7 +127,6 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
     const high52w = parseInt2(getInfo('highPriceOf52Weeks'));
     const low52w  = parseInt2(getInfo('lowPriceOf52Weeks'));
 
-    // ⭐ 시가/고가/저가 정합성 검증
     const rawHighToday = parseInt2(getInfo('highPrice'));
     const rawLowToday  = parseInt2(getInfo('lowPrice'));
     const rawOpenToday = parseInt2(getInfo('openPrice'));
@@ -188,15 +144,12 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
     const dividendYield = parseNum(getInfo('dividendYieldRatio'));
     const volume = parseInt2(getInfo('accumulatedTradingVolume'));
 
-    // 외국인 보유율
     const foreignStr = getInfo('foreignRate') || getInfo('foreignerHoldRatio') || getInfo('foreignerRate');
     const foreignOwnership = parseNum(foreignStr.replace('%', ''));
 
-    // 기관 보유율
     const instStr = getInfo('institutionHoldRatio') || getInfo('organRate') || '0';
     const institutionOwnership = parseNum(instStr.replace('%', ''));
 
-    // ── 컨센서스 파싱 ──
     let consensus: NaverStockData['consensus'] = null;
     const ci = data?.consensusInfo;
     if (ci) {
@@ -246,13 +199,11 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
       } catch {}
     }
 
-    // 거래량 비율
     const avgVol = parseInt2(getInfo('averageVolume') || '0');
     const volumeRatioCalc = avgVol > 0 && volume > 0
       ? Math.round(volume / avgVol * 100)
       : 100;
 
-    // 최신 뉴스 1건
     let latestNews: NaverStockData['latestNews'] = null;
     try {
       const newsRes = await axios.get(
@@ -270,8 +221,10 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
       }
     } catch {}
 
-    // ── 위험신호 ──
+    // ⭐ 위험신호 - KRX 공식 데이터 기반 (새 레벨 구조)
     const riskItems: NaverStockData['riskSignal']['items'] = [];
+    let riskLevel: 'critical' | 'warning' | 'info' | null = null;
+
     try {
       const riskRes = await axios.get(
         `${process.env.NEXT_PUBLIC_SITE_URL || 'https://1minstock.com'}/data/risk-stocks.json`,
@@ -280,22 +233,37 @@ export async function fetchNaverStock(code: string): Promise<NaverStockData | nu
       const riskData = riskRes.data;
       const stockRisk = riskData?.stocks?.[code];
       if (stockRisk && Array.isArray(stockRisk.details)) {
+        // 새 레벨 구조 적용
+        riskLevel = stockRisk.level || null;
         stockRisk.details.forEach((d: any) => {
           riskItems.push({
             type: d.type || '기타',
             label: d.label || d.type || '위험',
+            color: d.color || 'gray',
             description: d.description || '',
+            caution: d.caution,
           });
         });
       }
     } catch (e) {
+      // KRX 데이터 못 읽으면 네이버 보조 (기존 로직)
       const issueKindName = data?.stockIssueKind?.name || '';
       if (issueKindName && issueKindName !== '정상' && issueKindName !== '') {
-        riskItems.push({ type: '기타', label: issueKindName, description: `${issueKindName} 종목` });
+        riskItems.push({
+          type: '기타',
+          label: issueKindName,
+          color: 'amber',
+          description: `${issueKindName} 종목`,
+        });
+        riskLevel = 'warning';
       }
     }
 
-    const riskSignal = { hasRisk: riskItems.length > 0, items: riskItems };
+    const riskSignal = {
+      hasRisk: riskItems.length > 0,
+      level: riskLevel,
+      items: riskItems,
+    };
 
     return {
       code, name, market,
