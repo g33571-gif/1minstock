@@ -1,5 +1,5 @@
 // industries.ts - KRX 공식 업종 분류 (KOSPI + KOSDAQ 전체)
-// 2026-04-30 자동 생성 - getIndustryInfo 추가 (호환성 유지)
+// 2026-04-30 자동 생성 - getIndustryInfo가 null 반환 안 함 (빌드 에러 해결)
 // 총 2,771개 종목 매핑 (KOSPI 949 + KOSDAQ 1,822)
 
 export interface IndustryAvg {
@@ -11,6 +11,9 @@ export interface IndustryInfo {
   name: string;
   avgPer: number;
   avgPbr: number;
+  // 기존 코드 호환성
+  avgPER: number;
+  avgPBR: number;
 }
 
 export interface ValuationCompare {
@@ -22,7 +25,7 @@ export interface ValuationCompare {
   color: 'blue' | 'gray' | 'red';
 }
 
-// 업종별 평균 PER/PBR (참고치)
+// 업종별 평균 PER/PBR
 export const INDUSTRY_AVG: Record<string, IndustryAvg> = {
   '전기전자': { per: 18.0, pbr: 1.8 },
   'IT/소프트웨어': { per: 28.0, pbr: 3.2 },
@@ -2839,20 +2842,33 @@ export function hasIndustryMapping(code: string): boolean {
   return code in STOCK_INDUSTRY_MAP;
 }
 
-// ⭐ 종목 코드로 업종 정보 전체 가져오기 (호환성 유지)
-export function getIndustryInfo(code: string): IndustryInfo | null {
-  const industryName = STOCK_INDUSTRY_MAP[code];
-  if (!industryName) return null;
-
+// ⭐ 종목 코드로 업종 정보 가져오기 (절대 null 반환 안 함!)
+// 매핑 안 된 종목은 기본값 반환
+export function getIndustryInfo(code: string): IndustryInfo {
+  const industryName = STOCK_INDUSTRY_MAP[code] || '';
   const avg = INDUSTRY_AVG[industryName];
+  
+  if (!avg) {
+    // 매핑 안 된 종목은 빈 정보 (모든 값 0)
+    return {
+      name: industryName,
+      avgPer: 0,
+      avgPbr: 0,
+      avgPER: 0,
+      avgPBR: 0,
+    };
+  }
+  
   return {
     name: industryName,
-    avgPer: avg?.per || 0,
-    avgPbr: avg?.pbr || 0,
+    avgPer: avg.per,
+    avgPbr: avg.pbr,
+    avgPER: avg.per,  // 호환성
+    avgPBR: avg.pbr,  // 호환성
   };
 }
 
-// PER 비교 (저평가/적정/고평가 판단)
+// PER 비교
 export function comparePer(per: number, code: string): ValuationCompare | null {
   const industryName = getIndustryName(code);
   if (!industryName) return null;
