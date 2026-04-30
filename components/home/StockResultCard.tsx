@@ -17,7 +17,7 @@ interface CompanyOverview {
 interface StockResult {
   code: string; name: string; market: string;
   industryName: string | null;
-  companyOverview: CompanyOverview | null;  // ⭐ 새 필드
+  companyOverview: CompanyOverview | null;
   price: number; change: number; changePercent: number;
   openToday: number; highToday: number; lowToday: number;
   marketCap: string; volume: number; volumeRatio: number;
@@ -66,48 +66,67 @@ export default function StockResultCard({ data, onClose }: {
     <div style={{ animation: 'slideDown 0.25s ease' }}>
       <style>{`@keyframes slideDown{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}`}</style>
 
-      {/* ⭐ 헤더 - F 스타일 카드 분리형 */}
-      <div className="bg-emerald-900 rounded-t-2xl p-5 text-white">
-        <div className="mb-2">
-          <span className="text-[11px] text-emerald-300">{data.market} · {data.code}</span>
+      {/* ⭐ 종목 정보 카드 - AI 브리핑과 통일된 시그니처 디자인 */}
+      <div className="bg-emerald-900 rounded-2xl border-2 border-amber-400 p-4 mb-3">
+        {/* 라벨 (AI 브리핑과 동일 스타일) */}
+        <div className="flex items-center gap-2 mb-3">
+          <div className="bg-amber-400 rounded-md px-2.5 py-1 flex items-center gap-1.5 flex-shrink-0">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-900"></div>
+            <span className="text-[10px] font-semibold text-emerald-900">종목 정보</span>
+          </div>
+          <span className="text-[9px] text-emerald-300">{data.market} · {data.code}</span>
         </div>
-        <div className="text-[24px] font-medium mb-2 leading-tight">{data.name}</div>
-        <div className="flex items-center gap-2 text-[12px] text-emerald-200 flex-wrap">
+
+        {/* 종목명 */}
+        <div className="text-[26px] font-medium text-white mb-3 leading-tight">{data.name}</div>
+
+        {/* 업종 + 시총 */}
+        <div className="flex items-center gap-2 pb-3 border-b border-amber-400/30 mb-3">
           {data.industryName && (
             <>
-              <span className="bg-emerald-700/40 px-2 py-0.5 rounded-full text-[11px]">
+              <span className="bg-amber-400 text-emerald-900 px-2.5 py-1 rounded-full text-[11px] font-semibold">
                 {data.industryName}
               </span>
-              <span className="text-emerald-400/50">·</span>
+              <span className="text-emerald-400/40 text-[11px]">·</span>
             </>
           )}
-          <span>시총 {data.marketCap}</span>
+          <span className="text-[12px] text-emerald-200">
+            시총 <strong className="text-white font-medium">{data.marketCap}</strong>
+          </span>
         </div>
+
+        {/* 사업 분야 (AI 브리핑과 같은 동그라미 형식) */}
+        {data.companyOverview ? (
+          <div className="flex items-start gap-2">
+            <div className="w-5 h-5 rounded-full bg-amber-400/25 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <span className="text-[10px]">💼</span>
+            </div>
+            <div>
+              <div className="text-[10px] font-medium text-amber-300 mb-0.5">사업 분야</div>
+              <div className="text-[13px] text-white font-medium leading-snug mb-0.5">
+                {data.companyOverview.headline}
+              </div>
+              <div className="text-[11px] text-emerald-200">
+                {data.companyOverview.detail}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-start gap-2">
+            <div className="w-5 h-5 rounded-full bg-amber-400/25 flex items-center justify-center flex-shrink-0 mt-0.5">
+              <span className="text-[10px]">💼</span>
+            </div>
+            <div>
+              <div className="text-[10px] font-medium text-amber-300 mb-0.5">사업 분야</div>
+              <div className="text-[12px] text-emerald-200">
+                {data.industryName ? `${data.industryName} 분야 기업` : '한국 상장 기업'}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* ⭐ 사업 분야 카드 - 헤더 바로 아래 분리된 형태 */}
-      {data.companyOverview && (
-        <div className="bg-emerald-50 rounded-b-2xl px-5 py-3 mb-3 border-l-4 border-emerald-500">
-          <div className="flex items-center gap-2 mb-1.5">
-            <span className="text-[10px] font-semibold text-emerald-700 bg-white px-2 py-0.5 rounded">
-              사업 분야
-            </span>
-          </div>
-          <div className="text-[13px] font-medium text-emerald-900 leading-snug mb-0.5">
-            {data.companyOverview.headline}
-          </div>
-          <div className="text-[11px] text-emerald-700">
-            {data.companyOverview.detail}
-          </div>
-        </div>
-      )}
-
-      {/* 사업 분야 데이터 없을 때는 그냥 공간 메우기 */}
-      {!data.companyOverview && (
-        <div className="rounded-b-2xl mb-3 bg-emerald-900/0 h-2"></div>
-      )}
-
-      {/* AI 브리핑 - 메인 무기 */}
+      {/* AI 브리핑 - 메인 무기 (기존 스타일 유지) */}
       <div className="bg-emerald-900 rounded-2xl p-4 mb-3 border-2 border-amber-400">
         <div className="flex items-center gap-2 mb-3">
           <div className="bg-amber-400 rounded-md px-2.5 py-1 flex items-center gap-1.5 flex-shrink-0">
@@ -144,7 +163,7 @@ export default function StockResultCard({ data, onClose }: {
         </p>
       </div>
 
-      {/* 위험신호 - 5단계 레벨 */}
+      {/* 위험신호 - 5단계 레벨 (의미별 색상 유지) */}
       {data.riskSignal?.hasRisk && (() => {
         const level = data.riskSignal.level;
         const styles: Record<string, any> = {
@@ -226,13 +245,13 @@ export default function StockResultCard({ data, onClose }: {
         );
       })()}
 
-      {/* ⭐ 1년 가격 위치 - 옵션 3 (게이지 위 큰 인포) */}
+      {/* 1년 가격 위치 - 흰색 카드 (가독성, 시각적 휴식) */}
       <div className="bg-white rounded-2xl p-4 mb-3 border border-slate-100">
         <div className="text-[12px] font-medium text-slate-800 mb-3 flex items-center gap-1.5">
           <span>📊</span> 1년 가격 위치
         </div>
 
-        {/* ⭐ 게이지 위 큰 대비 인포 */}
+        {/* 게이지 위 큰 인포 */}
         <div className="flex items-center justify-center gap-6 py-3 mb-4 border-y border-slate-100">
           <div className="text-center">
             <div className="text-[10px] text-red-700 font-medium mb-1">최저 대비</div>
@@ -256,7 +275,7 @@ export default function StockResultCard({ data, onClose }: {
             style={{ left: `clamp(0px, calc(${data.pricePos}% - 8px), calc(100% - 16px))` }} />
         </div>
 
-        {/* 최저/최고 가격 */}
+        {/* 최저/최고 */}
         <div className="flex justify-between items-center mb-4">
           <div>
             <div className="text-[9px] text-blue-600 font-medium">최저</div>
@@ -271,7 +290,7 @@ export default function StockResultCard({ data, onClose }: {
           </div>
         </div>
 
-        {/* ⭐ 현재가 - 게이지 아래 적당한 크기 */}
+        {/* 현재가 - 게이지 아래 그린 박스 */}
         <div className="bg-emerald-50 rounded-xl p-3 mb-2">
           <div className="flex justify-between items-center">
             <div>
@@ -290,7 +309,7 @@ export default function StockResultCard({ data, onClose }: {
         </p>
       </div>
 
-      {/* 최신 뉴스 */}
+      {/* 최신 뉴스 - 흰색 카드 */}
       {data.latestNews && (
         <div className="bg-white rounded-2xl p-4 mb-3 border border-slate-100">
           <div className="text-[12px] font-medium text-slate-800 mb-2 flex items-center gap-1.5">
@@ -311,7 +330,7 @@ export default function StockResultCard({ data, onClose }: {
         </div>
       )}
 
-      {/* 핵심 지표 */}
+      {/* 핵심 지표 - 흰색 카드들 */}
       <div className="text-[11px] font-medium text-slate-400 mb-2 px-0.5">핵심 지표</div>
       <div className="grid grid-cols-2 gap-2 mb-3">
 
