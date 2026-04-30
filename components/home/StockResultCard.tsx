@@ -272,6 +272,16 @@ export default function StockResultCard({ data, onClose }: {
         );
       })()}
 
+      {/* ⭐ 모바일 광고 1 - AI 뉴스 후 (PC는 사이드 광고가 있어서 숨김) */}
+      <div className="lg:hidden mb-3">
+        <div className="bg-bg-subtle border border-dashed border-slate-300 rounded-xl p-3 text-center">
+          <div className="text-[10px] text-slate-500 font-semibold mb-1">AD · 광고</div>
+          <div className="text-xs text-slate-400 flex items-center justify-center" style={{ minHeight: '100px' }}>
+            [ 320×100 모바일 배너 ]
+          </div>
+        </div>
+      </div>
+
       {/* 1년 가격 위치 - 흰색 카드 (가독성, 시각적 휴식) */}
       <div className="bg-white rounded-2xl p-4 mb-3 border border-slate-100">
         <div className="text-[12px] font-medium text-slate-800 mb-3 flex items-center gap-1.5">
@@ -510,6 +520,16 @@ export default function StockResultCard({ data, onClose }: {
           </div>
         );
       })()}
+
+      {/* ⭐ 모바일 광고 2 - 1년 가격 후 (PC는 숨김) */}
+      <div className="lg:hidden mb-3">
+        <div className="bg-bg-subtle border border-dashed border-slate-300 rounded-xl p-3 text-center">
+          <div className="text-[10px] text-slate-500 font-semibold mb-1">AD · 광고</div>
+          <div className="text-xs text-slate-400 flex items-center justify-center" style={{ minHeight: '100px' }}>
+            [ 320×100 모바일 배너 ]
+          </div>
+        </div>
+      </div>
 
       {/* 핵심 지표 - 흰색 카드들 */}
       <div className="text-[11px] font-medium text-slate-400 mb-2 px-0.5">핵심 지표</div>
