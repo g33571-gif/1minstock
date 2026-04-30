@@ -124,13 +124,16 @@ export default function StockResultCard({ data, onClose }: {
   const isMarketOpen = marketStatus?.status === 'OPEN';
   const hasOhlcData = data.openToday > 0 && data.highToday > 0 && data.lowToday > 0;
 
-  // 변동 박스 표시 여부 결정
-  // 1. 장중이면 항상 표시
-  // 2. 장 외 시간이면서 변동이 0이면 "전일 종가" 라벨로 대체
-  // 3. 데이터 모순 (변동 0인데 시가≠현재가) 시 숨김
-  const showChangeBox = isMarketOpen
-    ? true  // 장중에는 항상 표시
-    : (data.change !== 0 || data.changePercent !== 0);  // 장 외엔 변동 있을 때만
+  // ⭐ 변동 박스 표시 여부 결정 (강화된 로직)
+  // 변동 0원/0%면 데이터가 신뢰할 수 없는 상태이므로 숨김 처리
+  // (장중이라도 진짜로 변동 0인 경우는 매우 드물고, 보통 데이터 미갱신 상태)
+  const showChangeBox = (data.change !== 0 || data.changePercent !== 0);
+
+  // 변동이 0이면 라벨 표시 (장 상태에 따라 다른 메시지)
+  const showFlatLabel = !showChangeBox;
+  const flatLabel = isMarketOpen
+    ? '데이터 갱신 중'   // 장중인데 변동 0 → 보통 캐시 갱신 대기 상태
+    : '전일 종가 기준'; // 장 외
 
   const isUp = data.changePercent >= 0;
 
@@ -164,9 +167,9 @@ export default function StockResultCard({ data, onClose }: {
               <span className="text-[28px] font-medium leading-none">{fmt(data.price)}</span>
               <span className="text-[12px] text-emerald-300">원</span>
             </div>
-            {/* ⭐ 장 외 시간 + 변동 0이면 "전일 종가" 라벨 표시 */}
-            {!showChangeBox && (
-              <div className="text-[10px] text-emerald-300/70 mt-1">전일 종가 기준</div>
+            {/* ⭐ 변동 0일 때 라벨 표시 (장중: "데이터 갱신 중" / 장 외: "전일 종가 기준") */}
+            {showFlatLabel && (
+              <div className="text-[10px] text-emerald-300/70 mt-1">{flatLabel}</div>
             )}
           </div>
 
