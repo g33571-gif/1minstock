@@ -318,85 +318,131 @@ export default function StockResultCard({ data, onClose }: {
         </p>
       </div>
 
-      {/* ⭐ AI 뉴스 - 시그니처 디자인 (진녹색 + 골드) */}
-      {data.aiNewsAnalysis && data.aiNewsAnalysis.selectedNews.length > 0 ? (
-        <div className="bg-emerald-900 rounded-2xl border-2 border-amber-400 p-4 mb-3">
-          {/* 라벨 (AI 브리핑과 동일 스타일) */}
-          <div className="flex items-center gap-2 mb-3">
-            <div className="bg-amber-400 rounded-md px-2.5 py-1 flex items-center gap-1.5 flex-shrink-0">
-              <div className="w-1.5 h-1.5 rounded-full bg-emerald-900"></div>
-              <span className="text-[10px] font-semibold text-emerald-900">AI 뉴스</span>
-            </div>
-            <span className="text-[9px] text-emerald-300">최근 3일 동향 · AI 분석</span>
-          </div>
-
-          {/* AI 종합 코멘트 */}
-          <div className="flex items-start gap-2 mb-3 pb-3 border-b border-amber-400/30">
-            <div className="w-5 h-5 rounded-full bg-amber-400/25 flex items-center justify-center flex-shrink-0 mt-0.5">
-              <span className="text-[10px]">💡</span>
-            </div>
-            <div>
-              <div className="text-[10px] font-medium text-amber-300 mb-0.5">종합 코멘트</div>
-              <div className="text-[12px] text-white leading-snug font-medium">
-                {data.aiNewsAnalysis.comment}
+      {/* ⭐ AI 뉴스 카드 - 무조건 보이도록 4단계 fallback */}
+      {(() => {
+        // 1단계: AI 뉴스 분석 성공
+        if (data.aiNewsAnalysis && data.aiNewsAnalysis.selectedNews && data.aiNewsAnalysis.selectedNews.length > 0) {
+          return (
+            <div className="bg-emerald-900 rounded-2xl border-2 border-amber-400 p-4 mb-3">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="bg-amber-400 rounded-md px-2.5 py-1 flex items-center gap-1.5 flex-shrink-0">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-900"></div>
+                  <span className="text-[10px] font-semibold text-emerald-900">AI 뉴스</span>
+                </div>
+                <span className="text-[9px] text-emerald-300">최근 동향 · AI 분석</span>
               </div>
-            </div>
-          </div>
 
-          {/* 선별된 뉴스 3개 */}
-          <div className="space-y-2">
-            {data.aiNewsAnalysis.selectedNews.map((news, i) => (
-              <a
-                key={i}
-                href={news.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="flex items-start gap-2 hover:bg-emerald-800/40 rounded-lg p-1.5 -mx-1.5 transition-colors no-underline"
-              >
+              {/* AI 종합 코멘트 */}
+              <div className="flex items-start gap-2 mb-3 pb-3 border-b border-amber-400/30">
                 <div className="w-5 h-5 rounded-full bg-amber-400/25 flex items-center justify-center flex-shrink-0 mt-0.5">
-                  <span className="text-[9px] font-medium text-amber-300">
-                    {i === 0 ? '①' : i === 1 ? '②' : '③'}
-                  </span>
+                  <span className="text-[10px]">💡</span>
+                </div>
+                <div>
+                  <div className="text-[10px] font-medium text-amber-300 mb-0.5">종합 코멘트</div>
+                  <div className="text-[12px] text-white leading-snug font-medium">
+                    {data.aiNewsAnalysis.comment}
+                  </div>
+                </div>
+              </div>
+
+              {/* 선별된 뉴스 */}
+              <div className="space-y-2">
+                {data.aiNewsAnalysis.selectedNews.map((news, i) => (
+                  <a
+                    key={i}
+                    href={news.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-start gap-2 hover:bg-emerald-800/40 rounded-lg p-1.5 -mx-1.5 transition-colors no-underline block"
+                  >
+                    <div className="w-5 h-5 rounded-full bg-amber-400/25 flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <span className="text-[9px] font-medium text-amber-300">
+                        {i === 0 ? '①' : i === 1 ? '②' : '③'}
+                      </span>
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-[12px] text-white leading-snug m-0 line-clamp-2 font-medium">
+                        {news.title}
+                      </p>
+                      <p className="text-[9px] text-emerald-300 m-0 mt-0.5">
+                        {news.daysAgo === 0 ? '오늘' : `${news.daysAgo}일 전`} · 네이버 금융
+                      </p>
+                    </div>
+                  </a>
+                ))}
+              </div>
+
+              <p className="text-[9px] text-emerald-400/50 mt-3">
+                ※ 네이버 금융 뉴스 + AI 분석 · 투자 권유 아님
+              </p>
+            </div>
+          );
+        }
+
+        // 2단계: AI 분석 실패했지만 latestNews는 있음 → 단일 뉴스를 시그니처로
+        if (data.latestNews) {
+          return (
+            <div className="bg-emerald-900 rounded-2xl border-2 border-amber-400 p-4 mb-3">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="bg-amber-400 rounded-md px-2.5 py-1 flex items-center gap-1.5 flex-shrink-0">
+                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-900"></div>
+                  <span className="text-[10px] font-semibold text-emerald-900">AI 뉴스</span>
+                </div>
+                <span className="text-[9px] text-emerald-300">최신 뉴스</span>
+              </div>
+
+              <a href={data.latestNews.url} target="_blank" rel="noopener noreferrer"
+                className="flex items-start gap-2 no-underline block">
+                <div className="w-5 h-5 rounded-full bg-amber-400/25 flex items-center justify-center flex-shrink-0 mt-0.5">
+                  <span className="text-[10px]">📰</span>
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-[12px] text-white leading-snug m-0 line-clamp-2 font-medium">
-                    {news.title}
+                    {data.latestNews.title}
                   </p>
                   <p className="text-[9px] text-emerald-300 m-0 mt-0.5">
-                    {news.daysAgo === 0 ? '오늘' : `${news.daysAgo}일 전`} · 네이버 금융
+                    {data.latestNews.time} · 네이버 금융
                   </p>
                 </div>
-                <svg className="w-3 h-3 text-amber-300/60 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>
-                </svg>
               </a>
-            ))}
-          </div>
 
-          <p className="text-[9px] text-emerald-400/50 mt-3">
-            ※ 네이버 금융 뉴스 + AI 분석 · 투자 권유 아님
-          </p>
-        </div>
-      ) : data.latestNews ? (
-        // AI 뉴스 분석 실패 시: 기존 1개 뉴스 표시 (fallback)
-        <div className="bg-white rounded-2xl p-4 mb-3 border border-slate-100">
-          <div className="text-[12px] font-medium text-slate-800 mb-2 flex items-center gap-1.5">
-            <span>📰</span> 최신 뉴스
-          </div>
-          <a href={data.latestNews.url} target="_blank" rel="noopener noreferrer"
-            className="flex items-start gap-3 bg-slate-50 rounded-xl p-3 no-underline block">
-            <div className="flex-1 min-w-0">
-              <p className="text-[12px] font-medium text-slate-800 leading-snug mb-1 m-0 line-clamp-2">
-                {data.latestNews.title}
+              <p className="text-[9px] text-emerald-400/50 mt-3">
+                ※ 네이버 금융 뉴스 · 투자 권유 아님
               </p>
-              <p className="text-[10px] text-slate-400 m-0">{data.latestNews.time} · 네이버 금융</p>
             </div>
-            <svg className="w-3.5 h-3.5 text-slate-400 flex-shrink-0 mt-0.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-              <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6M15 3h6v6M10 14 21 3"/>
-            </svg>
-          </a>
-        </div>
-      ) : null}
+          );
+        }
+
+        // 3단계: 모두 실패 - 안내 카드
+        return (
+          <div className="bg-emerald-900 rounded-2xl border-2 border-amber-400 p-4 mb-3">
+            <div className="flex items-center gap-2 mb-3">
+              <div className="bg-amber-400 rounded-md px-2.5 py-1 flex items-center gap-1.5 flex-shrink-0">
+                <div className="w-1.5 h-1.5 rounded-full bg-emerald-900"></div>
+                <span className="text-[10px] font-semibold text-emerald-900">AI 뉴스</span>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2">
+              <div className="w-5 h-5 rounded-full bg-amber-400/25 flex items-center justify-center flex-shrink-0 mt-0.5">
+                <span className="text-[10px]">📭</span>
+              </div>
+              <div>
+                <div className="text-[12px] text-white leading-snug font-medium mb-1">
+                  최근 뉴스가 없습니다
+                </div>
+                <div className="text-[10px] text-emerald-300">
+                  네이버 금융에서 직접 검색해보세요
+                </div>
+              </div>
+            </div>
+
+            <p className="text-[9px] text-emerald-400/50 mt-3">
+              ※ 네이버 금융 뉴스 · 잠시 후 다시 시도
+            </p>
+          </div>
+        );
+      })()}
 
       {/* 핵심 지표 - 흰색 카드들 */}
       <div className="text-[11px] font-medium text-slate-400 mb-2 px-0.5">핵심 지표</div>

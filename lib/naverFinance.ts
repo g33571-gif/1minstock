@@ -307,7 +307,7 @@ function formatMarketCap(str: string): string {
 
 // ============================================================
 // ⭐ AI 뉴스용: 최근 뉴스 여러 개 가져오기
-// 최근 3일 / 최대 7개
+// 최근 3일 / 최대 7개 / 강력한 fallback
 // ============================================================
 export interface RecentNewsItem {
   title: string;
@@ -317,36 +317,62 @@ export interface RecentNewsItem {
 }
 
 export async function fetchRecentNews(code: string, maxCount: number = 7): Promise<RecentNewsItem[]> {
-  try {
-    if (!/^\d{6}$/.test(code)) return [];
+  if (!/^\d{6}$/.test(code)) return [];
 
+  // 시도 1: 네이버 모바일 뉴스 API
+  try {
     const newsRes = await axios.get(
-      `https://m.stock.naver.com/api/stock/${code}/news?pageSize=15&page=1`,
-      { headers, timeout: 4000 }
+      `https://m.stock.naver.com/api/stock/${code}/news?pageSize=20&page=1`,
+      { headers, timeout: 5000 }
     );
 
     const items = newsRes.data?.result || newsRes.data || [];
-    if (!Array.isArray(items)) return [];
+    console.log(`[fetchRecentNews] code=${code}, raw items count=${Array.isArray(items) ? items.length : 0}`);
+
+    if (!Array.isArray(items) || items.length === 0) {
+      console.log(`[fetchRecentNews] No items, trying fallback`);
+      return [];
+    }
 
     const now = Date.now();
-    const threeDaysAgo = now - (3 * 24 * 60 * 60 * 1000);
+    const sevenDaysAgo = now - (7 * 24 * 60 * 60 * 1000); // 7일로 완화 (3일 → 7일)
     const result: RecentNewsItem[] = [];
 
     for (const item of items) {
       if (!item?.title) continue;
 
-      // 시간 파싱 (네이버 형식: "2026-04-30 12:34:56" 또는 ISO)
-      const timeStr = item.wdate || item.date || '';
-      const itemTime = new Date(timeStr.replace(/\./g, '-')).getTime();
+      // 다양한 시간 형식 시도
+      const timeStr = item.wdate || item.date || item.pubDate || item.regDate || '';
 
-      // 3일 이내 뉴스만
-      if (isNaN(itemTime) || itemTime < threeDaysAgo) continue;
+      // 시간 파싱 - 여러 형식 시도
+      let itemTime = NaN;
+      if (timeStr) {
+        // 형식 1: ISO (2026-04-30T12:34:56)
+        itemTime = new Date(timeStr).getTime();
 
-      const daysAgo = Math.floor((now - itemTime) / (24 * 60 * 60 * 1000));
+        // 형식 2: 한국식 (2026.04.30 12:34)
+        if (isNaN(itemTime)) {
+          const normalized = timeStr.replace(/\./g, '-').replace(/(\d{4}-\d{2}-\d{2})\s+(\d+:\d+)/, '$1T$2:00');
+          itemTime = new Date(normalized).getTime();
+        }
+
+        // 형식 3: 그냥 숫자 (timestamp)
+        if (isNaN(itemTime) && /^\d+$/.test(timeStr)) {
+          itemTime = parseInt(timeStr) * (timeStr.length === 10 ? 1000 : 1);
+        }
+      }
+
+      // 시간 파싱 실패해도 일단 포함! (시간 모를 때는 최신으로 가정)
+      const daysAgo = isNaN(itemTime)
+        ? 0  // 모르면 오늘로 표시
+        : Math.max(0, Math.floor((now - itemTime) / (24 * 60 * 60 * 1000)));
+
+      // 7일 이내만 (시간 파싱 성공한 경우만 필터)
+      if (!isNaN(itemTime) && itemTime < sevenDaysAgo) continue;
 
       result.push({
         title: item.title.trim(),
-        time: timeStr,
+        time: timeStr || '',
         url: item.url || `https://finance.naver.com/item/news.naver?code=${code}`,
         daysAgo,
       });
@@ -354,9 +380,13 @@ export async function fetchRecentNews(code: string, maxCount: number = 7): Promi
       if (result.length >= maxCount) break;
     }
 
+    console.log(`[fetchRecentNews] code=${code}, filtered count=${result.length}`);
     return result;
-  } catch (e) {
-    console.error('[fetchRecentNews]', e);
+
+  } catch (e: any) {
+    console.error(`[fetchRecentNews] API error for ${code}:`, e?.message || e);
+
+    // 실패 시: 빈 배열 반환 (호출자가 처리)
     return [];
   }
 }

@@ -296,15 +296,26 @@ export async function fetchAINewsAnalysis(
   name: string,
   recentNews: AINewsItem[]
 ): Promise<AINewsAnalysis | null> {
+  console.log(`[fetchAINewsAnalysis] code=${code}, news count=${recentNews?.length || 0}`);
+
+  // 뉴스가 0개면 null 반환 (이건 정상)
+  if (!recentNews || recentNews.length === 0) {
+    console.log(`[fetchAINewsAnalysis] No news available, returning null`);
+    return null;
+  }
+
   const cacheKey = `news_${code}`;
   const cached = newsCache.get(cacheKey);
-  if (cached && Date.now() - cached.ts < NEWS_TTL) return cached.data;
+  if (cached && Date.now() - cached.ts < NEWS_TTL) {
+    console.log(`[fetchAINewsAnalysis] Cache hit for ${code}`);
+    return cached.data;
+  }
 
-  // 뉴스 없으면 null
-  if (!recentNews || recentNews.length === 0) return null;
-
-  // API 없으면 fallback (최신 3개 그대로 반환)
-  if (!ANTHROPIC_API_KEY) return buildNewsFallback(recentNews);
+  // API 키 없으면 즉시 fallback
+  if (!ANTHROPIC_API_KEY) {
+    console.log(`[fetchAINewsAnalysis] No API key, using fallback`);
+    return buildNewsFallback(recentNews);
+  }
 
   try {
     // 뉴스 목록을 문자열로
@@ -312,7 +323,7 @@ export async function fetchAINewsAnalysis(
       `${i + 1}. [${n.daysAgo === 0 ? '오늘' : n.daysAgo + '일 전'}] ${n.title}`
     ).join('\n');
 
-    const prompt = `당신은 한국 주식 뉴스 분석가입니다. "${name}" 종목의 최근 3일 뉴스를 분석하세요.
+    const prompt = `당신은 한국 주식 뉴스 분석가입니다. "${name}" 종목의 최근 뉴스를 분석하세요.
 
 [뉴스 목록]
 ${newsListStr}
@@ -354,26 +365,43 @@ ${newsListStr}
       }),
     });
 
-    if (!res.ok) return buildNewsFallback(recentNews);
+    if (!res.ok) {
+      console.log(`[fetchAINewsAnalysis] API failed (${res.status}), using fallback`);
+      return buildNewsFallback(recentNews);
+    }
 
     const data = await res.json();
     const raw = data?.content?.[0]?.text?.trim();
-    if (!raw) return buildNewsFallback(recentNews);
+    if (!raw) {
+      console.log(`[fetchAINewsAnalysis] Empty response, using fallback`);
+      return buildNewsFallback(recentNews);
+    }
 
     const cleaned = raw.replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(cleaned) as { comment: string; selectedIndices: number[] };
+    let parsed: { comment: string; selectedIndices: number[] };
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      console.log(`[fetchAINewsAnalysis] JSON parse failed, using fallback`);
+      return buildNewsFallback(recentNews);
+    }
 
     if (!parsed.comment || !Array.isArray(parsed.selectedIndices)) {
+      console.log(`[fetchAINewsAnalysis] Invalid format, using fallback`);
       return buildNewsFallback(recentNews);
     }
 
     // 선별된 인덱스로 뉴스 추출 (1부터 시작이니 -1)
     const selectedNews = parsed.selectedIndices
       .map(idx => recentNews[idx - 1])
-      .filter(n => n) // undefined 제거
-      .slice(0, 3); // 최대 3개
+      .filter(n => n)
+      .slice(0, 3);
 
-    if (selectedNews.length === 0) return buildNewsFallback(recentNews);
+    // AI가 0개 선별했으면 fallback (최신 3개)
+    if (selectedNews.length === 0) {
+      console.log(`[fetchAINewsAnalysis] AI selected 0 news, using fallback`);
+      return buildNewsFallback(recentNews);
+    }
 
     const result: AINewsAnalysis = {
       comment: parsed.comment,
@@ -381,19 +409,25 @@ ${newsListStr}
     };
 
     newsCache.set(cacheKey, { data: result, ts: Date.now() });
+    console.log(`[fetchAINewsAnalysis] Success, ${selectedNews.length} news selected`);
     return result;
 
-  } catch (e) {
-    console.error('[fetchAINewsAnalysis]', e);
+  } catch (e: any) {
+    console.error(`[fetchAINewsAnalysis] Error for ${code}:`, e?.message || e);
     return buildNewsFallback(recentNews);
   }
 }
 
 function buildNewsFallback(recentNews: AINewsItem[]): AINewsAnalysis {
   // API 실패 시 최신 3개 + 기본 코멘트
+  const top3 = recentNews.slice(0, 3);
+  const comment = top3.length === 1
+    ? '최근 뉴스 1건, 동향 확인'
+    : `최근 ${top3.length}건의 뉴스, 시장 동향 확인`;
+
   return {
-    comment: `최근 ${recentNews.length}건 뉴스 발생, 동향 확인 필요`,
-    selectedNews: recentNews.slice(0, 3),
+    comment,
+    selectedNews: top3,
   };
 }
 

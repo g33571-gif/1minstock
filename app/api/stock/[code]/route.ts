@@ -29,6 +29,20 @@ export async function GET(
       fetchRecentNews(code, 7), // 최대 7개 가져옴 (AI가 3개 선별)
     ]);
 
+    console.log(`[API/stock] code=${code}, recent news count=${recentNews.length}, latestNews exists=${!!naverData.latestNews}`);
+
+    // ⭐ 뉴스가 0개일 때 latestNews라도 활용
+    let newsForAI = recentNews;
+    if (recentNews.length === 0 && naverData.latestNews) {
+      console.log(`[API/stock] Using latestNews as fallback for ${code}`);
+      newsForAI = [{
+        title: naverData.latestNews.title,
+        time: naverData.latestNews.time,
+        url: naverData.latestNews.url,
+        daysAgo: 0,
+      }];
+    }
+
     const f5d   = tradingData?.foreign5d ?? 0;
     const i5d   = tradingData?.institution5d ?? 0;
     const p5d   = tradingData?.individual5d ?? 0;
@@ -72,7 +86,7 @@ export async function GET(
         volumeRatio: naverData.volumeRatioCalc,
       }),
       fetchCompanyOverview(code, naverData.name, industryName),
-      fetchAINewsAnalysis(code, naverData.name, recentNews),
+      fetchAINewsAnalysis(code, naverData.name, newsForAI),
     ]);
 
     return NextResponse.json({
