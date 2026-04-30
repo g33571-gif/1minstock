@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import SearchBar from '@/components/home/SearchBar';
 import MarketIndices from '@/components/home/MarketIndices';
@@ -41,7 +41,7 @@ const POPULAR = [
   { name: 'NAVER', code: '035420' },
 ];
 
-// ⭐ 종목명 → 종목코드 빠른 검색 (헤더에서 종목명으로 들어왔을 때)
+// 종목명 → 종목코드 빠른 검색
 async function findCodeByName(name: string): Promise<{ code: string; name: string } | null> {
   try {
     const res = await fetch(`/api/search?q=${encodeURIComponent(name)}`);
@@ -56,7 +56,9 @@ async function findCodeByName(name: string): Promise<{ code: string; name: strin
   }
 }
 
-export default function HomePage() {
+// ⭐ useSearchParams를 쓰는 부분만 별도 컴포넌트로 분리
+// (Next.js 14에서 useSearchParams는 반드시 Suspense 안에 있어야 함)
+function HomePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
 
@@ -84,18 +86,15 @@ export default function HomePage() {
     }
   };
 
-  // ⭐ URL 파라미터로 검색어가 들어오면 자동 검색
+  // URL 파라미터로 검색어가 들어오면 자동 검색
   useEffect(() => {
     const code = searchParams.get('code');
     const q = searchParams.get('q');
 
     if (code && /^\d{6}$/.test(code)) {
-      // 종목코드 직접 검색
       handleSelect(code, code);
-      // URL 정리 (다음 검색 위해)
       router.replace('/', { scroll: false });
     } else if (q) {
-      // 종목명 검색 → API로 코드 찾아서 검색
       (async () => {
         const found = await findCodeByName(q);
         if (found) {
@@ -121,7 +120,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen">
 
-      {/* 히어로 배너 (결과 없을 때만) */}
+      {/* 히어로 배너 */}
       {!showResult && (
         <div className="bg-emerald-900 rounded-2xl p-5 mb-4 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/2"></div>
@@ -165,10 +164,8 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* 검색창 */}
       <SearchBar onSelect={handleSelect} selectedName={selectedName} />
 
-      {/* 결과 없을 때 광고 */}
       {!showResult && (
         <>
           <MobileAd />
@@ -176,7 +173,6 @@ export default function HomePage() {
         </>
       )}
 
-      {/* 결과 영역 */}
       {loading && <ResultSkeleton name={selectedName} />}
 
       {!loading && error && (
@@ -195,7 +191,6 @@ export default function HomePage() {
         </>
       )}
 
-      {/* 결과 없을 때 기본 화면 */}
       {!showResult && (
         <>
           <div className="mb-4">
@@ -226,5 +221,26 @@ export default function HomePage() {
         모든 투자 판단과 결과는 본인 책임입니다.
       </div>
     </div>
+  );
+}
+
+// 로딩 중 보여줄 간단한 화면
+function HomePageFallback() {
+  return (
+    <div className="min-h-screen flex items-center justify-center py-20">
+      <div className="flex items-center gap-2">
+        <div className="w-4 h-4 border-2 border-emerald-700 border-t-transparent rounded-full animate-spin"></div>
+        <span className="text-[12px] text-slate-500">불러오는 중...</span>
+      </div>
+    </div>
+  );
+}
+
+// ⭐ 메인 페이지 - Suspense로 감싸서 useSearchParams 에러 해결
+export default function HomePage() {
+  return (
+    <Suspense fallback={<HomePageFallback />}>
+      <HomePageContent />
+    </Suspense>
   );
 }
