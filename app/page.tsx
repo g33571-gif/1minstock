@@ -1,11 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useSearchParams, useRouter } from 'next/navigation';
 import SearchBar from '@/components/home/SearchBar';
 import MarketIndices from '@/components/home/MarketIndices';
 import StockResultCard from '@/components/home/StockResultCard';
-import MarketStatusBanner from '@/components/common/MarketStatusBanner';
-import { getMarketStatus, MarketStatusInfo } from '@/lib/marketStatus';
 
 const MobileAd = () => (
   <div className="lg:hidden border border-dashed border-slate-200 rounded-xl p-3 text-center mb-4 bg-slate-50">
@@ -42,22 +41,29 @@ const POPULAR = [
   { name: 'NAVER', code: '035420' },
 ];
 
+// ⭐ 종목명 → 종목코드 빠른 검색 (헤더에서 종목명으로 들어왔을 때)
+async function findCodeByName(name: string): Promise<{ code: string; name: string } | null> {
+  try {
+    const res = await fetch(`/api/search?q=${encodeURIComponent(name)}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      return { code: data[0].code, name: data[0].name };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
 export default function HomePage() {
+  const searchParams = useSearchParams();
+  const router = useRouter();
+
   const [loading, setLoading] = useState(false);
   const [result, setResult]   = useState<any>(null);
   const [error, setError]     = useState('');
   const [selectedName, setSelectedName] = useState('');
-  const [marketStatus, setMarketStatus] = useState<MarketStatusInfo | null>(null);
-
-  // 시장 상태는 클라이언트에서 판단 (SSR 시점과 클라이언트 시점이 다를 수 있음)
-  useEffect(() => {
-    setMarketStatus(getMarketStatus());
-    // 1분마다 갱신 (장 시작/마감 시점 자동 반영)
-    const interval = setInterval(() => {
-      setMarketStatus(getMarketStatus());
-    }, 60_000);
-    return () => clearInterval(interval);
-  }, []);
 
   const handleSelect = async (code: string, name: string) => {
     setSelectedName(name);
@@ -78,6 +84,31 @@ export default function HomePage() {
     }
   };
 
+  // ⭐ URL 파라미터로 검색어가 들어오면 자동 검색
+  useEffect(() => {
+    const code = searchParams.get('code');
+    const q = searchParams.get('q');
+
+    if (code && /^\d{6}$/.test(code)) {
+      // 종목코드 직접 검색
+      handleSelect(code, code);
+      // URL 정리 (다음 검색 위해)
+      router.replace('/', { scroll: false });
+    } else if (q) {
+      // 종목명 검색 → API로 코드 찾아서 검색
+      (async () => {
+        const found = await findCodeByName(q);
+        if (found) {
+          handleSelect(found.code, found.name);
+        } else {
+          setError(`"${q}" 종목을 찾을 수 없어요`);
+        }
+        router.replace('/', { scroll: false });
+      })();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
+
   const handleClose = () => {
     setResult(null);
     setError('');
@@ -90,7 +121,7 @@ export default function HomePage() {
   return (
     <div className="min-h-screen">
 
-      {/* ── 히어로 배너 (결과 없을 때만) ── */}
+      {/* 히어로 배너 (결과 없을 때만) */}
       {!showResult && (
         <div className="bg-emerald-900 rounded-2xl p-5 mb-4 relative overflow-hidden">
           <div className="absolute top-0 right-0 w-32 h-32 rounded-full bg-white/5 -translate-y-1/2 translate-x-1/2"></div>
@@ -120,7 +151,7 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── 결과 모드 미니 헤더 ── */}
+      {/* 결과 모드 미니 헤더 */}
       {showResult && (
         <div className="flex items-center justify-between mb-2 px-1">
           <div className="flex items-center gap-2">
@@ -134,13 +165,10 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* ── 검색창 (항상 최상단) ── */}
+      {/* 검색창 */}
       <SearchBar onSelect={handleSelect} selectedName={selectedName} />
 
-      {/* ── ⭐ 시장 상태 배너 (검색창 바로 아래) ── */}
-      {marketStatus && <MarketStatusBanner statusInfo={marketStatus} />}
-
-      {/* ── 결과 없을 때 광고 ── */}
+      {/* 결과 없을 때 광고 */}
       {!showResult && (
         <>
           <MobileAd />
@@ -148,7 +176,7 @@ export default function HomePage() {
         </>
       )}
 
-      {/* ── 결과 영역 ── */}
+      {/* 결과 영역 */}
       {loading && <ResultSkeleton name={selectedName} />}
 
       {!loading && error && (
@@ -167,7 +195,7 @@ export default function HomePage() {
         </>
       )}
 
-      {/* ── 결과 없을 때 기본 화면 ── */}
+      {/* 결과 없을 때 기본 화면 */}
       {!showResult && (
         <>
           <div className="mb-4">

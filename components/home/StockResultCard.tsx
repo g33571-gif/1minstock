@@ -1,5 +1,8 @@
 'use client';
 
+import { useEffect, useState } from 'react';
+import { getMarketStatus, MarketStatusInfo } from '@/lib/marketStatus';
+
 interface ValuationCompare {
   industryName: string;
   myValue: number;
@@ -40,7 +43,7 @@ function fmtAmt(n: number) {
   return n !== 0 ? `${sign}${abs.toLocaleString('ko-KR')}` : '-';
 }
 
-// 수급 막대 — 좌측 매도(파랑) | 중앙 0 | 우측 매수(빨강)
+// 수급 막대
 function SupplyBar({ label, days, amount, max }: {
   label: string; days: number; amount: number; max: number;
 }) {
@@ -82,10 +85,48 @@ function SupplyBar({ label, days, amount, max }: {
   );
 }
 
+// ⭐ 시장 상태 라벨 (헤더 옆 작게)
+function MarketStatusBadge({ status }: { status: MarketStatusInfo }) {
+  if (!status.showBanner) return null;
+
+  const colors = {
+    PRE_OPEN:  { bg: 'bg-blue-500/20',   dot: 'bg-blue-300',   text: 'text-blue-200' },
+    CLOSED:    { bg: 'bg-slate-500/20',  dot: 'bg-slate-300',  text: 'text-slate-200' },
+    WEEKEND:   { bg: 'bg-amber-500/20',  dot: 'bg-amber-300',  text: 'text-amber-200' },
+    HOLIDAY:   { bg: 'bg-amber-500/20',  dot: 'bg-amber-300',  text: 'text-amber-200' },
+    OPEN:      { bg: 'bg-emerald-500/20',dot: 'bg-emerald-300',text: 'text-emerald-200' },
+  }[status.status];
+
+  return (
+    <span
+      className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full ${colors.bg}`}
+      title={status.description}
+    >
+      <span className={`w-1 h-1 rounded-full ${colors.dot}`}></span>
+      <span className={`text-[9px] font-medium ${colors.text}`}>{status.label}</span>
+    </span>
+  );
+}
+
 export default function StockResultCard({ data, onClose }: {
   data: StockResult; onClose: () => void;
 }) {
   const isUp = data.changePercent >= 0;
+  const [marketStatus, setMarketStatus] = useState<MarketStatusInfo | null>(null);
+
+  useEffect(() => {
+    setMarketStatus(getMarketStatus());
+    const interval = setInterval(() => setMarketStatus(getMarketStatus()), 60_000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // 시가=고가=저가일 때 (장 시작 전 데이터)
+  const isPreMarketData =
+    data.openToday && data.highToday && data.lowToday &&
+    data.openToday === data.highToday &&
+    data.highToday === data.lowToday &&
+    data.lowToday === data.price &&
+    data.change === 0;
 
   const posLabel =
     data.pricePos <= 20 ? '저점 근처' :
@@ -93,7 +134,6 @@ export default function StockResultCard({ data, onClose }: {
     data.pricePos <= 60 ? '중간 구간' :
     data.pricePos <= 80 ? '중간~고점' : '고점 근처';
 
-  // 수급 그래프 최댓값
   const supplyMax = Math.max(
     Math.abs(data.foreign5d),
     Math.abs(data.institution5d),
@@ -108,8 +148,12 @@ export default function StockResultCard({ data, onClose }: {
       {/* 헤더 */}
       <div className="bg-emerald-900 rounded-2xl p-4 mb-3 text-white">
         <div className="flex justify-between items-start mb-3">
-          <div>
-            <div className="text-[11px] text-emerald-300 mb-1">{data.market} · {data.code}</div>
+          <div className="min-w-0 flex-1">
+            {/* ⭐ 종목코드 라인에 시장 상태 라벨 추가 */}
+            <div className="flex items-center gap-2 mb-1 flex-wrap">
+              <span className="text-[11px] text-emerald-300">{data.market} · {data.code}</span>
+              {marketStatus && <MarketStatusBadge status={marketStatus} />}
+            </div>
             <div className="text-xl font-medium mb-2">{data.name}</div>
             <div className="flex items-baseline gap-2">
               <span className="text-[28px] font-medium leading-none">{fmt(data.price)}</span>
@@ -138,6 +182,12 @@ export default function StockResultCard({ data, onClose }: {
             </div>
           ))}
         </div>
+        {/* ⭐ 장 시작 전 데이터 안내 (시가=고가=저가일 때만) */}
+        {isPreMarketData && (
+          <div className="mt-2 pt-2 border-t border-white/10 text-center text-[9px] text-amber-300/80">
+            ※ 장 시작 전이라 시가/고가/저가가 직전 종가로 표시됩니다
+          </div>
+        )}
       </div>
 
       {/* AI 브리핑 */}
@@ -403,12 +453,7 @@ export default function StockResultCard({ data, onClose }: {
         </div>
       )}
 
-      {/* 전체 상세 보기 */}
-      <a href={`/${data.code}`}
-        className="block bg-emerald-900 rounded-2xl p-3.5 text-center no-underline mb-3 hover:bg-emerald-800 transition-colors">
-        <div className="text-[13px] font-medium text-white">전체 상세 보기</div>
-        <div className="text-[10px] text-emerald-300 mt-0.5">실적 · 컨센서스 · 매매동향 전체 →</div>
-      </a>
+      {/* ⭐ "전체 상세 보기" 버튼 제거 (사장님 요청) */}
 
       <div className="text-center text-[10px] text-slate-400 py-1">
         ※ 공개 데이터 요약 · 투자 자문 아님 · 판단은 본인 책임
