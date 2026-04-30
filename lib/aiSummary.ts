@@ -269,3 +269,131 @@ function buildOverviewFallback(name: string, industryName: string): CompanyOverv
     detail: '상세 정보는 DART 공시 참고',
   };
 }
+
+// ============================================================
+// ⭐ AI 뉴스 분석 (사장님 요청)
+// 최근 3일 뉴스 5~7개 → AI가 핵심 3개 선별 + 종합 코멘트
+// 6시간 캐시
+// ============================================================
+
+export interface AINewsItem {
+  title: string;
+  time: string;
+  url: string;
+  daysAgo: number;
+}
+
+export interface AINewsAnalysis {
+  comment: string;          // AI 종합 코멘트 (한 줄, 30자 이내)
+  selectedNews: AINewsItem[]; // 선별된 핵심 3개 뉴스
+}
+
+const newsCache = new Map<string, { data: AINewsAnalysis; ts: number }>();
+const NEWS_TTL = 1000 * 60 * 60 * 6; // 6시간
+
+export async function fetchAINewsAnalysis(
+  code: string,
+  name: string,
+  recentNews: AINewsItem[]
+): Promise<AINewsAnalysis | null> {
+  const cacheKey = `news_${code}`;
+  const cached = newsCache.get(cacheKey);
+  if (cached && Date.now() - cached.ts < NEWS_TTL) return cached.data;
+
+  // 뉴스 없으면 null
+  if (!recentNews || recentNews.length === 0) return null;
+
+  // API 없으면 fallback (최신 3개 그대로 반환)
+  if (!ANTHROPIC_API_KEY) return buildNewsFallback(recentNews);
+
+  try {
+    // 뉴스 목록을 문자열로
+    const newsListStr = recentNews.map((n, i) =>
+      `${i + 1}. [${n.daysAgo === 0 ? '오늘' : n.daysAgo + '일 전'}] ${n.title}`
+    ).join('\n');
+
+    const prompt = `당신은 한국 주식 뉴스 분석가입니다. "${name}" 종목의 최근 3일 뉴스를 분석하세요.
+
+[뉴스 목록]
+${newsListStr}
+
+[작업]
+1. 위 뉴스 중 가장 중요한/영향력 있는 3개를 선별 (단순 광고나 중복 제외)
+2. 종합 코멘트 한 줄 작성 (30자 이내, 객관적 사실만)
+
+[출력 - 반드시 이 JSON만]
+{
+  "comment": "30자 이내 종합 코멘트",
+  "selectedIndices": [선별한 뉴스 번호 3개 배열, 예: 1, 3, 5]
+}
+
+[규칙]
+- 코멘트는 30자 이내, 사실 기반
+- 투자 권유·매수·매도 표현 절대 금지
+- 호재/악재 표현 가능 (객관적 분석)
+- selectedIndices는 위 목록의 번호 (1부터 시작)
+- JSON 외 텍스트 출력 금지
+
+[예시]
+{
+  "comment": "HBM 수요 증가로 호재 우세, 실적 개선 기대",
+  "selectedIndices": [1, 3, 5]
+}`;
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 300,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!res.ok) return buildNewsFallback(recentNews);
+
+    const data = await res.json();
+    const raw = data?.content?.[0]?.text?.trim();
+    if (!raw) return buildNewsFallback(recentNews);
+
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    const parsed = JSON.parse(cleaned) as { comment: string; selectedIndices: number[] };
+
+    if (!parsed.comment || !Array.isArray(parsed.selectedIndices)) {
+      return buildNewsFallback(recentNews);
+    }
+
+    // 선별된 인덱스로 뉴스 추출 (1부터 시작이니 -1)
+    const selectedNews = parsed.selectedIndices
+      .map(idx => recentNews[idx - 1])
+      .filter(n => n) // undefined 제거
+      .slice(0, 3); // 최대 3개
+
+    if (selectedNews.length === 0) return buildNewsFallback(recentNews);
+
+    const result: AINewsAnalysis = {
+      comment: parsed.comment,
+      selectedNews,
+    };
+
+    newsCache.set(cacheKey, { data: result, ts: Date.now() });
+    return result;
+
+  } catch (e) {
+    console.error('[fetchAINewsAnalysis]', e);
+    return buildNewsFallback(recentNews);
+  }
+}
+
+function buildNewsFallback(recentNews: AINewsItem[]): AINewsAnalysis {
+  // API 실패 시 최신 3개 + 기본 코멘트
+  return {
+    comment: `최근 ${recentNews.length}건 뉴스 발생, 동향 확인 필요`,
+    selectedNews: recentNews.slice(0, 3),
+  };
+}
+

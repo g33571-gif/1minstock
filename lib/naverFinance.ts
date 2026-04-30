@@ -304,3 +304,60 @@ function formatMarketCap(str: string): string {
   }
   return str;
 }
+
+// ============================================================
+// ⭐ AI 뉴스용: 최근 뉴스 여러 개 가져오기
+// 최근 3일 / 최대 7개
+// ============================================================
+export interface RecentNewsItem {
+  title: string;
+  time: string;
+  url: string;
+  daysAgo: number;
+}
+
+export async function fetchRecentNews(code: string, maxCount: number = 7): Promise<RecentNewsItem[]> {
+  try {
+    if (!/^\d{6}$/.test(code)) return [];
+
+    const newsRes = await axios.get(
+      `https://m.stock.naver.com/api/stock/${code}/news?pageSize=15&page=1`,
+      { headers, timeout: 4000 }
+    );
+
+    const items = newsRes.data?.result || newsRes.data || [];
+    if (!Array.isArray(items)) return [];
+
+    const now = Date.now();
+    const threeDaysAgo = now - (3 * 24 * 60 * 60 * 1000);
+    const result: RecentNewsItem[] = [];
+
+    for (const item of items) {
+      if (!item?.title) continue;
+
+      // 시간 파싱 (네이버 형식: "2026-04-30 12:34:56" 또는 ISO)
+      const timeStr = item.wdate || item.date || '';
+      const itemTime = new Date(timeStr.replace(/\./g, '-')).getTime();
+
+      // 3일 이내 뉴스만
+      if (isNaN(itemTime) || itemTime < threeDaysAgo) continue;
+
+      const daysAgo = Math.floor((now - itemTime) / (24 * 60 * 60 * 1000));
+
+      result.push({
+        title: item.title.trim(),
+        time: timeStr,
+        url: item.url || `https://finance.naver.com/item/news.naver?code=${code}`,
+        daysAgo,
+      });
+
+      if (result.length >= maxCount) break;
+    }
+
+    return result;
+  } catch (e) {
+    console.error('[fetchRecentNews]', e);
+    return [];
+  }
+}
+

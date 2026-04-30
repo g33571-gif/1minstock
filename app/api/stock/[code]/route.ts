@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchNaverStock } from '@/lib/naverFinance';
+import { fetchNaverStock, fetchRecentNews } from '@/lib/naverFinance';
 import { fetchInvestorTrading } from '@/lib/investorTrading';
-import { fetchAIBriefing, fetchCompanyOverview } from '@/lib/aiSummary';
+import { fetchAIBriefing, fetchCompanyOverview, fetchAINewsAnalysis } from '@/lib/aiSummary';
 import { comparePer, comparePbr, getIndustryName, hasIndustryMapping } from '@/lib/data/industries';
 
 export const dynamic = 'force-dynamic';
@@ -23,7 +23,11 @@ export async function GET(
       return NextResponse.json({ error: '종목을 찾을 수 없어요' }, { status: 404 });
     }
 
-    const tradingData = await fetchInvestorTrading(code, naverData.price);
+    // 매매동향 + 최근 뉴스 병렬 (속도 ↑)
+    const [tradingData, recentNews] = await Promise.all([
+      fetchInvestorTrading(code, naverData.price),
+      fetchRecentNews(code, 7), // 최대 7개 가져옴 (AI가 3개 선별)
+    ]);
 
     const f5d   = tradingData?.foreign5d ?? 0;
     const i5d   = tradingData?.institution5d ?? 0;
@@ -44,11 +48,10 @@ export async function GET(
     const totalCons = cons ? cons.buyCount + cons.neutralCount + cons.sellCount : 0;
     const buyPct = totalCons > 0 ? Math.round(cons!.buyCount / totalCons * 100) : 0;
 
-    // 업종명 가져오기
     const industryName = hasIndustryMapping(code) ? getIndustryName(code) : '';
 
-    // ⭐ AI 브리핑과 회사 요약 병렬로 가져오기 (속도 ↑)
-    const [aiBriefing, companyOverview] = await Promise.all([
+    // ⭐ AI 호출 3개 병렬 (브리핑 + 회사요약 + 뉴스분석)
+    const [aiBriefing, companyOverview, aiNewsAnalysis] = await Promise.all([
       fetchAIBriefing({
         name: naverData.name,
         price: naverData.price,
@@ -68,8 +71,8 @@ export async function GET(
         volume: naverData.volume,
         volumeRatio: naverData.volumeRatioCalc,
       }),
-      // 회사 요약 (24시간 캐시되니 부담 적음)
       fetchCompanyOverview(code, naverData.name, industryName),
+      fetchAINewsAnalysis(code, naverData.name, recentNews),
     ]);
 
     return NextResponse.json({
@@ -77,7 +80,7 @@ export async function GET(
       name: naverData.name,
       market: naverData.market,
       industryName: industryName || null,
-      companyOverview,  // ⭐ 새 필드
+      companyOverview,
       price: naverData.price,
       change: naverData.change,
       changePercent: naverData.changePercent,
@@ -104,7 +107,9 @@ export async function GET(
       perCompare: comparePer(naverData.per, code),
       pbrCompare: comparePbr(naverData.pbr, code),
       aiBriefing,
+      // ⭐ AI 뉴스 (기존 latestNews는 호환성 위해 유지)
       latestNews: naverData.latestNews,
+      aiNewsAnalysis,
       riskSignal: naverData.riskSignal,
     }, {
       headers: {
