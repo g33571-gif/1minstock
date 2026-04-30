@@ -43,7 +43,6 @@ function fmtAmt(n: number) {
   return n !== 0 ? `${sign}${abs.toLocaleString('ko-KR')}` : '-';
 }
 
-// 수급 막대
 function SupplyBar({ label, days, amount, max }: {
   label: string; days: number; amount: number; max: number;
 }) {
@@ -85,7 +84,7 @@ function SupplyBar({ label, days, amount, max }: {
   );
 }
 
-// ⭐ 시장 상태 라벨 (헤더 옆 작게)
+// 시장 상태 라벨
 function MarketStatusBadge({ status }: { status: MarketStatusInfo }) {
   if (!status.showBanner) return null;
 
@@ -111,7 +110,6 @@ function MarketStatusBadge({ status }: { status: MarketStatusInfo }) {
 export default function StockResultCard({ data, onClose }: {
   data: StockResult; onClose: () => void;
 }) {
-  const isUp = data.changePercent >= 0;
   const [marketStatus, setMarketStatus] = useState<MarketStatusInfo | null>(null);
 
   useEffect(() => {
@@ -120,13 +118,21 @@ export default function StockResultCard({ data, onClose }: {
     return () => clearInterval(interval);
   }, []);
 
-  // 시가=고가=저가일 때 (장 시작 전 데이터)
-  const isPreMarketData =
-    data.openToday && data.highToday && data.lowToday &&
-    data.openToday === data.highToday &&
-    data.highToday === data.lowToday &&
-    data.lowToday === data.price &&
-    data.change === 0;
+  // ⭐ 변동 데이터 신뢰성 검증
+  // 변동이 0인데 시가가 현재가와 다르면 데이터 일관성 깨짐 → 변동 박스 숨김
+  // 또는 장중이 아닌 시간대(장전/장후/주말/휴장)에는 "전일 종가" 표시
+  const isMarketOpen = marketStatus?.status === 'OPEN';
+  const hasOhlcData = data.openToday > 0 && data.highToday > 0 && data.lowToday > 0;
+
+  // 변동 박스 표시 여부 결정
+  // 1. 장중이면 항상 표시
+  // 2. 장 외 시간이면서 변동이 0이면 "전일 종가" 라벨로 대체
+  // 3. 데이터 모순 (변동 0인데 시가≠현재가) 시 숨김
+  const showChangeBox = isMarketOpen
+    ? true  // 장중에는 항상 표시
+    : (data.change !== 0 || data.changePercent !== 0);  // 장 외엔 변동 있을 때만
+
+  const isUp = data.changePercent >= 0;
 
   const posLabel =
     data.pricePos <= 20 ? '저점 근처' :
@@ -149,7 +155,6 @@ export default function StockResultCard({ data, onClose }: {
       <div className="bg-emerald-900 rounded-2xl p-4 mb-3 text-white">
         <div className="flex justify-between items-start mb-3">
           <div className="min-w-0 flex-1">
-            {/* ⭐ 종목코드 라인에 시장 상태 라벨 추가 */}
             <div className="flex items-center gap-2 mb-1 flex-wrap">
               <span className="text-[11px] text-emerald-300">{data.market} · {data.code}</span>
               {marketStatus && <MarketStatusBadge status={marketStatus} />}
@@ -159,33 +164,52 @@ export default function StockResultCard({ data, onClose }: {
               <span className="text-[28px] font-medium leading-none">{fmt(data.price)}</span>
               <span className="text-[12px] text-emerald-300">원</span>
             </div>
+            {/* ⭐ 장 외 시간 + 변동 0이면 "전일 종가" 라벨 표시 */}
+            {!showChangeBox && (
+              <div className="text-[10px] text-emerald-300/70 mt-1">전일 종가 기준</div>
+            )}
           </div>
-          <div className={`rounded-lg px-3 py-2 text-center flex-shrink-0 ${isUp ? 'bg-red-500/30' : 'bg-blue-600/30'}`}>
-            <div className={`text-[13px] font-medium ${isUp ? 'text-red-300' : 'text-blue-300'}`}>
-              {isUp ? '▲' : '▼'} {Math.abs(data.changePercent).toFixed(2)}%
+
+          {/* ⭐ 변동 박스: 신뢰할 만한 데이터일 때만 표시 */}
+          {showChangeBox && (
+            <div className={`rounded-lg px-3 py-2 text-center flex-shrink-0 ${isUp ? 'bg-red-500/30' : 'bg-blue-600/30'}`}>
+              <div className={`text-[13px] font-medium ${isUp ? 'text-red-300' : 'text-blue-300'}`}>
+                {isUp ? '▲' : '▼'} {Math.abs(data.changePercent).toFixed(2)}%
+              </div>
+              <div className={`text-[11px] ${isUp ? 'text-red-300' : 'text-blue-300'}`}>
+                {isUp ? '+' : ''}{fmt(data.change)}원
+              </div>
             </div>
-            <div className={`text-[11px] ${isUp ? 'text-red-300' : 'text-blue-300'}`}>
-              {isUp ? '+' : ''}{fmt(data.change)}원
-            </div>
+          )}
+        </div>
+
+        {/* ⭐ 시가/고가/저가/시총 - OHLC 데이터 있을 때만 표시 */}
+        {hasOhlcData ? (
+          <div className="border-t border-white/10 pt-3 grid grid-cols-4 gap-1 text-center">
+            {[
+              { label: '시가', val: fmt(data.openToday), color: 'text-white' },
+              { label: '고가', val: fmt(data.highToday), color: 'text-red-300' },
+              { label: '저가', val: fmt(data.lowToday),  color: 'text-blue-300' },
+              { label: '시총', val: data.marketCap, color: 'text-white' },
+            ].map(({ label, val, color }) => (
+              <div key={label}>
+                <div className="text-[9px] text-emerald-300 mb-1">{label}</div>
+                <div className={`text-[11px] font-medium ${color}`}>{val}</div>
+              </div>
+            ))}
           </div>
-        </div>
-        <div className="border-t border-white/10 pt-3 grid grid-cols-4 gap-1 text-center">
-          {[
-            { label: '시가', val: fmt(data.openToday || data.price), color: 'text-white' },
-            { label: '고가', val: fmt(data.highToday || data.price), color: 'text-red-300' },
-            { label: '저가', val: fmt(data.lowToday  || data.price), color: 'text-blue-300' },
-            { label: '시총', val: data.marketCap, color: 'text-white' },
-          ].map(({ label, val, color }) => (
-            <div key={label}>
-              <div className="text-[9px] text-emerald-300 mb-1">{label}</div>
-              <div className={`text-[11px] font-medium ${color}`}>{val}</div>
+        ) : (
+          // OHLC 데이터 없으면 시총만 표시
+          <div className="border-t border-white/10 pt-3 flex justify-between items-center">
+            <div className="text-[10px] text-emerald-300/70">
+              {isMarketOpen
+                ? '시세 데이터 로딩 중'
+                : '장 외 시간 · 시가/고가/저가는 거래일에 표시됩니다'}
             </div>
-          ))}
-        </div>
-        {/* ⭐ 장 시작 전 데이터 안내 (시가=고가=저가일 때만) */}
-        {isPreMarketData && (
-          <div className="mt-2 pt-2 border-t border-white/10 text-center text-[9px] text-amber-300/80">
-            ※ 장 시작 전이라 시가/고가/저가가 직전 종가로 표시됩니다
+            <div className="text-right">
+              <div className="text-[9px] text-emerald-300 mb-0.5">시총</div>
+              <div className="text-[11px] font-medium text-white">{data.marketCap}</div>
+            </div>
           </div>
         )}
       </div>
@@ -228,7 +252,7 @@ export default function StockResultCard({ data, onClose }: {
         </p>
       </div>
 
-      {/* 위험신호 (있을 때만) */}
+      {/* 위험신호 */}
       {data.riskSignal?.hasRisk && (
         <div className="bg-red-50 border-2 border-red-500 rounded-2xl p-4 mb-3">
           <div className="flex items-center gap-2 mb-2">
@@ -299,7 +323,7 @@ export default function StockResultCard({ data, onClose }: {
       <div className="text-[11px] font-medium text-slate-400 mb-2 px-0.5">핵심 지표</div>
       <div className="grid grid-cols-2 gap-2 mb-3">
 
-        {/* PER 동종업종 비교 */}
+        {/* PER */}
         <div className="bg-white rounded-xl p-3.5 border border-slate-100">
           <div className="flex items-center gap-1.5 mb-2.5">
             <span style={{ fontSize: 13 }}>💼</span>
@@ -336,7 +360,7 @@ export default function StockResultCard({ data, onClose }: {
           )}
         </div>
 
-        {/* PBR 동종업종 비교 */}
+        {/* PBR */}
         <div className="bg-white rounded-xl p-3.5 border border-slate-100">
           <div className="flex items-center gap-1.5 mb-2.5">
             <span style={{ fontSize: 13 }}>📈</span>
@@ -453,10 +477,8 @@ export default function StockResultCard({ data, onClose }: {
         </div>
       )}
 
-      {/* ⭐ "전체 상세 보기" 버튼 제거 (사장님 요청) */}
-
       <div className="text-center text-[10px] text-slate-400 py-1">
-        ※ 공개 데이터 요약 · 투자 자문 아님 · 판단은 본인 책임
+        ※ 공개 데이터 요약 · 약 15~20분 지연 · 투자 자문 아님 · 판단은 본인 책임
       </div>
     </div>
   );
