@@ -1,11 +1,16 @@
 // industries.ts - KRX 공식 업종 분류 (KOSPI + KOSDAQ 전체)
-// 2026-04-30 자동 생성 (data_1356_*, data_1923_*)
+// 2026-04-30 자동 생성 - getIndustryInfo 추가 (호환성 유지)
 // 총 2,771개 종목 매핑 (KOSPI 949 + KOSDAQ 1,822)
-// 매월 1회 갱신 권장
 
 export interface IndustryAvg {
   per: number;
   pbr: number;
+}
+
+export interface IndustryInfo {
+  name: string;
+  avgPer: number;
+  avgPbr: number;
 }
 
 export interface ValuationCompare {
@@ -49,7 +54,7 @@ export const INDUSTRY_AVG: Record<string, IndustryAvg> = {
   '미디어': { per: 18.0, pbr: 1.5 },
 };
 
-// 종목코드 → 업종명 매핑 (KRX 공식 데이터 기준)
+// 종목코드 → 업종명 매핑 (KRX 공식 데이터)
 export const STOCK_INDUSTRY_MAP: Record<string, string> = {
   '000020': '제약/바이오',
   '000040': '자동차',
@@ -2834,18 +2839,31 @@ export function hasIndustryMapping(code: string): boolean {
   return code in STOCK_INDUSTRY_MAP;
 }
 
+// ⭐ 종목 코드로 업종 정보 전체 가져오기 (호환성 유지)
+export function getIndustryInfo(code: string): IndustryInfo | null {
+  const industryName = STOCK_INDUSTRY_MAP[code];
+  if (!industryName) return null;
+
+  const avg = INDUSTRY_AVG[industryName];
+  return {
+    name: industryName,
+    avgPer: avg?.per || 0,
+    avgPbr: avg?.pbr || 0,
+  };
+}
+
 // PER 비교 (저평가/적정/고평가 판단)
 export function comparePer(per: number, code: string): ValuationCompare | null {
   const industryName = getIndustryName(code);
   if (!industryName) return null;
-  
+
   const avg = INDUSTRY_AVG[industryName];
   if (!avg || per <= 0) return null;
-  
+
   const diffPercent = Math.round(((per - avg.per) / avg.per) * 100);
   let label: '저평가' | '적정' | '고평가';
   let color: 'blue' | 'gray' | 'red';
-  
+
   if (diffPercent <= -20) {
     label = '저평가';
     color = 'blue';
@@ -2856,7 +2874,7 @@ export function comparePer(per: number, code: string): ValuationCompare | null {
     label = '적정';
     color = 'gray';
   }
-  
+
   return {
     industryName,
     myValue: per,
@@ -2871,14 +2889,14 @@ export function comparePer(per: number, code: string): ValuationCompare | null {
 export function comparePbr(pbr: number, code: string): ValuationCompare | null {
   const industryName = getIndustryName(code);
   if (!industryName) return null;
-  
+
   const avg = INDUSTRY_AVG[industryName];
   if (!avg || pbr <= 0) return null;
-  
+
   const diffPercent = Math.round(((pbr - avg.pbr) / avg.pbr) * 100);
   let label: '저평가' | '적정' | '고평가';
   let color: 'blue' | 'gray' | 'red';
-  
+
   if (diffPercent <= -20) {
     label = '저평가';
     color = 'blue';
@@ -2889,7 +2907,7 @@ export function comparePbr(pbr: number, code: string): ValuationCompare | null {
     label = '적정';
     color = 'gray';
   }
-  
+
   return {
     industryName,
     myValue: pbr,
