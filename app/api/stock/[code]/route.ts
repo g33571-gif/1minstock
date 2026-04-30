@@ -1,14 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { fetchNaverStock } from '@/lib/naverFinance';
 import { fetchInvestorTrading } from '@/lib/investorTrading';
-import { fetchAIBriefing } from '@/lib/aiSummary';
-import { comparePer, comparePbr } from '@/lib/data/industries';
+import { fetchAIBriefing, fetchCompanyOverview } from '@/lib/aiSummary';
+import { comparePer, comparePbr, getIndustryName, hasIndustryMapping } from '@/lib/data/industries';
 
-// ⭐ 30초 캐시 - 비용 절감 + 데이터 신선도 균형
-// AI 브리핑은 fetchAIBriefing 내부에서 6시간 캐시 (별도)
-// 가격/수급 데이터는 30초마다 갱신 (사용자 체감 거의 실시간)
 export const dynamic = 'force-dynamic';
-export const revalidate = 30;       // 30초 캐시
+export const revalidate = 30;
 export const runtime = 'nodejs';
 
 export async function GET(
@@ -47,33 +44,40 @@ export async function GET(
     const totalCons = cons ? cons.buyCount + cons.neutralCount + cons.sellCount : 0;
     const buyPct = totalCons > 0 ? Math.round(cons!.buyCount / totalCons * 100) : 0;
 
-    // ⭐ AI 브리핑은 fetchAIBriefing 내부에서 6시간 캐시
-    // (handover 파일에 명시됨: "Claude Haiku, 캐싱 6시간")
-    const aiBriefing = await fetchAIBriefing({
-      name: naverData.name,
-      price: naverData.price,
-      changePercent: naverData.changePercent,
-      per: naverData.per,
-      pbr: naverData.pbr,
-      foreign5d: f5d,
-      institution5d: i5d,
-      pricePosition: pricePos,
-      foreignOwnership: fPct,
-      dividendYield: naverData.dividendYield,
-      consecutiveBuyDays: fDays,
-      institutionConsecutiveBuyDays: iDays,
-      marketCap: naverData.marketCap,
-      consensusTargetPrice: cons?.targetPrice,
-      consensusBuyPct: buyPct,
-      volume: naverData.volume,
-      volumeRatio: naverData.volumeRatioCalc,
-    });
+    // 업종명 가져오기
+    const industryName = hasIndustryMapping(code) ? getIndustryName(code) : '';
 
-    // ⭐ 응답 헤더에 30초 캐시 명시 (Vercel CDN도 30초만 캐시)
+    // ⭐ AI 브리핑과 회사 요약 병렬로 가져오기 (속도 ↑)
+    const [aiBriefing, companyOverview] = await Promise.all([
+      fetchAIBriefing({
+        name: naverData.name,
+        price: naverData.price,
+        changePercent: naverData.changePercent,
+        per: naverData.per,
+        pbr: naverData.pbr,
+        foreign5d: f5d,
+        institution5d: i5d,
+        pricePosition: pricePos,
+        foreignOwnership: fPct,
+        dividendYield: naverData.dividendYield,
+        consecutiveBuyDays: fDays,
+        institutionConsecutiveBuyDays: iDays,
+        marketCap: naverData.marketCap,
+        consensusTargetPrice: cons?.targetPrice,
+        consensusBuyPct: buyPct,
+        volume: naverData.volume,
+        volumeRatio: naverData.volumeRatioCalc,
+      }),
+      // 회사 요약 (24시간 캐시되니 부담 적음)
+      fetchCompanyOverview(code, naverData.name, industryName),
+    ]);
+
     return NextResponse.json({
       code,
       name: naverData.name,
       market: naverData.market,
+      industryName: industryName || null,
+      companyOverview,  // ⭐ 새 필드
       price: naverData.price,
       change: naverData.change,
       changePercent: naverData.changePercent,
@@ -104,8 +108,6 @@ export async function GET(
       riskSignal: naverData.riskSignal,
     }, {
       headers: {
-        // 30초 캐시: 사용자 30초 이내 같은 종목 검색 시 캐시 반환
-        // 30초 후엔 백그라운드에서 새로 가져옴 (stale-while-revalidate)
         'Cache-Control': 'public, s-maxage=30, stale-while-revalidate=60',
       },
     });

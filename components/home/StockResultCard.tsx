@@ -9,9 +9,15 @@ interface ValuationCompare {
   color: 'blue' | 'gray' | 'red';
 }
 
+interface CompanyOverview {
+  headline: string;
+  detail: string;
+}
+
 interface StockResult {
   code: string; name: string; market: string;
   industryName: string | null;
+  companyOverview: CompanyOverview | null;  // ⭐ 새 필드
   price: number; change: number; changePercent: number;
   openToday: number; highToday: number; lowToday: number;
   marketCap: string; volume: number; volumeRatio: number;
@@ -49,7 +55,6 @@ export default function StockResultCard({ data, onClose }: {
     data.pricePos <= 60 ? '중간 구간' :
     data.pricePos <= 80 ? '중간~고점' : '고점 근처';
 
-  // 최저가 대비 / 최고가 대비
   const fromLow = data.low52w > 0
     ? Math.round(((data.price - data.low52w) / data.low52w) * 100)
     : 0;
@@ -61,8 +66,8 @@ export default function StockResultCard({ data, onClose }: {
     <div style={{ animation: 'slideDown 0.25s ease' }}>
       <style>{`@keyframes slideDown{from{opacity:0;transform:translateY(-6px);}to{opacity:1;transform:translateY(0);}}`}</style>
 
-      {/* 헤더 - 종목 정보만 (가격/장상태 라벨 모두 제거) */}
-      <div className="bg-emerald-900 rounded-2xl p-5 mb-3 text-white">
+      {/* ⭐ 헤더 - F 스타일 카드 분리형 */}
+      <div className="bg-emerald-900 rounded-t-2xl p-5 text-white">
         <div className="mb-2">
           <span className="text-[11px] text-emerald-300">{data.market} · {data.code}</span>
         </div>
@@ -79,6 +84,28 @@ export default function StockResultCard({ data, onClose }: {
           <span>시총 {data.marketCap}</span>
         </div>
       </div>
+
+      {/* ⭐ 사업 분야 카드 - 헤더 바로 아래 분리된 형태 */}
+      {data.companyOverview && (
+        <div className="bg-emerald-50 rounded-b-2xl px-5 py-3 mb-3 border-l-4 border-emerald-500">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-[10px] font-semibold text-emerald-700 bg-white px-2 py-0.5 rounded">
+              사업 분야
+            </span>
+          </div>
+          <div className="text-[13px] font-medium text-emerald-900 leading-snug mb-0.5">
+            {data.companyOverview.headline}
+          </div>
+          <div className="text-[11px] text-emerald-700">
+            {data.companyOverview.detail}
+          </div>
+        </div>
+      )}
+
+      {/* 사업 분야 데이터 없을 때는 그냥 공간 메우기 */}
+      {!data.companyOverview && (
+        <div className="rounded-b-2xl mb-3 bg-emerald-900/0 h-2"></div>
+      )}
 
       {/* AI 브리핑 - 메인 무기 */}
       <div className="bg-emerald-900 rounded-2xl p-4 mb-3 border-2 border-amber-400">
@@ -117,82 +144,51 @@ export default function StockResultCard({ data, onClose }: {
         </p>
       </div>
 
-      {/* ⭐ 위험신호 - KRX 공식 데이터 기반 5단계 레벨 표시 */}
+      {/* 위험신호 - 5단계 레벨 */}
       {data.riskSignal?.hasRisk && (() => {
         const level = data.riskSignal.level;
         const styles: Record<string, any> = {
           critical_unbuyable: {
-            bg: 'bg-slate-900',
-            border: 'border-slate-900',
-            iconBg: 'bg-red-600',
-            titleColor: 'text-white',
-            descColor: 'text-red-300',
-            title: `🚨 매수 불가 종목`,
-            subtitle: '거래 자체가 정지되었거나 상장폐지 진행 중',
-            cardBg: 'bg-slate-800',
-            cardText: 'text-white',
+            bg: 'bg-slate-900', border: 'border-slate-900', iconBg: 'bg-red-600',
+            titleColor: 'text-white', descColor: 'text-red-300',
+            title: '🚨 매수 불가 종목', subtitle: '거래 자체가 정지되었거나 상장폐지 진행 중',
+            cardBg: 'bg-slate-800', cardText: 'text-white',
           },
           critical: {
-            bg: 'bg-red-50',
-            border: 'border-red-500',
-            iconBg: 'bg-red-600',
-            titleColor: 'text-red-900',
-            descColor: 'text-red-700',
-            title: `매우 위험 ${data.riskSignal.items.length}건`,
-            subtitle: '투자 시 매우 큰 위험이 따를 수 있습니다',
-            cardBg: 'bg-white',
-            cardText: 'text-slate-800',
+            bg: 'bg-red-50', border: 'border-red-500', iconBg: 'bg-red-600',
+            titleColor: 'text-red-900', descColor: 'text-red-700',
+            title: `매우 위험 ${data.riskSignal.items.length}건`, subtitle: '투자 시 매우 큰 위험이 따를 수 있습니다',
+            cardBg: 'bg-white', cardText: 'text-slate-800',
           },
           warning: {
-            bg: 'bg-orange-50',
-            border: 'border-orange-500',
-            iconBg: 'bg-orange-500',
-            titleColor: 'text-orange-900',
-            descColor: 'text-orange-700',
-            title: `투자 경고 ${data.riskSignal.items.length}건`,
-            subtitle: '주가 변동이 크거나 위험성이 있는 종목',
-            cardBg: 'bg-white',
-            cardText: 'text-slate-800',
+            bg: 'bg-orange-50', border: 'border-orange-500', iconBg: 'bg-orange-500',
+            titleColor: 'text-orange-900', descColor: 'text-orange-700',
+            title: `투자 경고 ${data.riskSignal.items.length}건`, subtitle: '주가 변동이 크거나 위험성이 있는 종목',
+            cardBg: 'bg-white', cardText: 'text-slate-800',
           },
           caution: {
-            bg: 'bg-amber-50',
-            border: 'border-amber-400',
-            iconBg: 'bg-amber-500',
-            titleColor: 'text-amber-900',
-            descColor: 'text-amber-700',
-            title: `투자 주의 ${data.riskSignal.items.length}건`,
-            subtitle: '투자 위험성을 검토하세요',
-            cardBg: 'bg-white',
-            cardText: 'text-slate-800',
+            bg: 'bg-amber-50', border: 'border-amber-400', iconBg: 'bg-amber-500',
+            titleColor: 'text-amber-900', descColor: 'text-amber-700',
+            title: `투자 주의 ${data.riskSignal.items.length}건`, subtitle: '투자 위험성을 검토하세요',
+            cardBg: 'bg-white', cardText: 'text-slate-800',
           },
           info: {
-            bg: 'bg-slate-50',
-            border: 'border-slate-300',
-            iconBg: 'bg-slate-500',
-            titleColor: 'text-slate-900',
-            descColor: 'text-slate-700',
-            title: '특이 종목 안내',
-            subtitle: '일반 종목과 성격이 다른 종목',
-            cardBg: 'bg-white',
-            cardText: 'text-slate-800',
+            bg: 'bg-slate-50', border: 'border-slate-300', iconBg: 'bg-slate-500',
+            titleColor: 'text-slate-900', descColor: 'text-slate-700',
+            title: '특이 종목 안내', subtitle: '일반 종목과 성격이 다른 종목',
+            cardBg: 'bg-white', cardText: 'text-slate-800',
           },
         };
         const s = styles[level || 'info'] || styles.info;
         const itemColors: Record<string, string> = {
-          black: 'bg-slate-900 text-white',
-          red: 'bg-red-600 text-white',
-          orange: 'bg-orange-500 text-white',
-          amber: 'bg-amber-500 text-white',
-          gray: 'bg-slate-500 text-white',
-          blue: 'bg-blue-500 text-white',
+          black: 'bg-slate-900 text-white', red: 'bg-red-600 text-white',
+          orange: 'bg-orange-500 text-white', amber: 'bg-amber-500 text-white',
+          gray: 'bg-slate-500 text-white', blue: 'bg-blue-500 text-white',
         };
         const borderColors: Record<string, string> = {
-          black: 'border-slate-900',
-          red: 'border-red-600',
-          orange: 'border-orange-500',
-          amber: 'border-amber-500',
-          gray: 'border-slate-500',
-          blue: 'border-blue-500',
+          black: 'border-slate-900', red: 'border-red-600',
+          orange: 'border-orange-500', amber: 'border-amber-500',
+          gray: 'border-slate-500', blue: 'border-blue-500',
         };
 
         return (
@@ -230,10 +226,27 @@ export default function StockResultCard({ data, onClose }: {
         );
       })()}
 
-      {/* 1년 가격 위치 - 참고가 큼직하게 */}
+      {/* ⭐ 1년 가격 위치 - 옵션 3 (게이지 위 큰 인포) */}
       <div className="bg-white rounded-2xl p-4 mb-3 border border-slate-100">
         <div className="text-[12px] font-medium text-slate-800 mb-3 flex items-center gap-1.5">
           <span>📊</span> 1년 가격 위치
+        </div>
+
+        {/* ⭐ 게이지 위 큰 대비 인포 */}
+        <div className="flex items-center justify-center gap-6 py-3 mb-4 border-y border-slate-100">
+          <div className="text-center">
+            <div className="text-[10px] text-red-700 font-medium mb-1">최저 대비</div>
+            <div className="text-[24px] font-bold text-red-600 leading-none">
+              {fromLow >= 0 ? '+' : ''}{fromLow}%
+            </div>
+          </div>
+          <div className="w-px h-10 bg-slate-200"></div>
+          <div className="text-center">
+            <div className="text-[10px] text-blue-800 font-medium mb-1">최고 대비</div>
+            <div className="text-[24px] font-bold text-blue-600 leading-none">
+              {fromHigh >= 0 ? '+' : ''}{fromHigh}%
+            </div>
+          </div>
         </div>
 
         {/* 게이지 */}
@@ -243,7 +256,7 @@ export default function StockResultCard({ data, onClose }: {
             style={{ left: `clamp(0px, calc(${data.pricePos}% - 8px), calc(100% - 16px))` }} />
         </div>
 
-        {/* 최저/최고 */}
+        {/* 최저/최고 가격 */}
         <div className="flex justify-between items-center mb-4">
           <div>
             <div className="text-[9px] text-blue-600 font-medium">최저</div>
@@ -258,23 +271,17 @@ export default function StockResultCard({ data, onClose }: {
           </div>
         </div>
 
-        {/* 참고가 - 큼직하게 */}
-        <div className="bg-emerald-50 rounded-xl p-4 mb-2">
-          <div className="flex items-center justify-between mb-2">
-            <span className="text-[11px] text-emerald-700 font-medium">📍 참고가</span>
+        {/* ⭐ 현재가 - 게이지 아래 적당한 크기 */}
+        <div className="bg-emerald-50 rounded-xl p-3 mb-2">
+          <div className="flex justify-between items-center">
+            <div>
+              <div className="text-[10px] text-emerald-700 font-medium mb-0.5">💰 현재가</div>
+              <div className="flex items-baseline gap-1">
+                <span className="text-[20px] font-semibold text-emerald-900 leading-none">{fmt(data.price)}</span>
+                <span className="text-[12px] text-emerald-700">원</span>
+              </div>
+            </div>
             <span className="text-[9px] text-emerald-600/70">약 15~20분 지연</span>
-          </div>
-          <div className="text-[28px] font-medium text-emerald-900 leading-none mb-2">
-            {fmt(data.price)}<span className="text-[14px] text-emerald-700 ml-1">원</span>
-          </div>
-          <div className="flex items-center gap-3 text-[11px]">
-            <span className={`font-medium ${fromLow >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
-              최저 대비 {fromLow >= 0 ? '+' : ''}{fromLow}%
-            </span>
-            <span className="text-slate-300">/</span>
-            <span className={`font-medium ${fromHigh >= 0 ? 'text-red-600' : 'text-blue-600'}`}>
-              최고 대비 {fromHigh >= 0 ? '+' : ''}{fromHigh}%
-            </span>
           </div>
         </div>
 
