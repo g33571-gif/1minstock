@@ -1,5 +1,6 @@
 // DART API - 주요 종목 정적 매핑 (속도 우선)
 // corpCode.xml 다운로드 X → 즉시 응답
+// + 최근 공시 조회 기능 추가 (AI 뉴스용)
 
 import axios from 'axios';
 
@@ -85,7 +86,7 @@ const corpCodeMap: Record<string, string> = {
   '000100': '00126237', // 유한양행
   '009830': '00164742', // 한화솔루션
   '000720': '00164824', // 현대건설
-  
+
   // KOSDAQ TOP
   '247540': '00859590', // 에코프로비엠
   '086520': '00547588', // 에코프로
@@ -117,8 +118,8 @@ export async function fetchDartCompany(stockCode: string): Promise<DartCompanyIn
   try {
     const response = await axios.get(
       `${DART_BASE_URL}/company.json?crtfc_key=${DART_API_KEY}&corp_code=${corpCode}`,
-      { 
-        timeout: 5000, // 5초 타임아웃 (빠르게)
+      {
+        timeout: 5000,
       }
     );
 
@@ -143,4 +144,114 @@ export async function fetchDartCompany(stockCode: string): Promise<DartCompanyIn
 function formatDate(dateStr: string): string {
   if (!dateStr || dateStr.length < 6) return '-';
   return `${dateStr.substring(0, 4)}.${dateStr.substring(4, 6)}`;
+}
+
+// ============================================================
+// ⭐ 최근 공시 조회 (AI 뉴스용)
+// 최근 7일 주요 공시 5개
+// ============================================================
+
+export interface DartFiling {
+  title: string;       // 공시 제목
+  date: string;        // 공시일자 (YYYY-MM-DD)
+  url: string;         // DART 상세 URL
+  daysAgo: number;     // 며칠 전인지
+  reportName: string;  // 보고서 종류
+}
+
+export async function fetchRecentDartFilings(
+  stockCode: string,
+  maxCount: number = 5
+): Promise<DartFiling[]> {
+  if (!DART_API_KEY) {
+    console.log(`[fetchRecentDartFilings] No API key`);
+    return [];
+  }
+
+  const corpCode = corpCodeMap[stockCode];
+  if (!corpCode) {
+    console.log(`[fetchRecentDartFilings] No corp_code for ${stockCode} (not in TOP list)`);
+    return [];
+  }
+
+  try {
+    // 최근 7일 날짜 범위 계산
+    const now = new Date();
+    const sevenDaysAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
+    const bgnDe = formatDartDate(sevenDaysAgo);
+    const endDe = formatDartDate(now);
+
+    // DART 공시 검색 API
+    const response = await axios.get(
+      `${DART_BASE_URL}/list.json`,
+      {
+        params: {
+          crtfc_key: DART_API_KEY,
+          corp_code: corpCode,
+          bgn_de: bgnDe,
+          end_de: endDe,
+          page_count: 20, // 최대 20개 가져옴
+        },
+        timeout: 5000,
+      }
+    );
+
+    if (response.status !== 200) return [];
+
+    const data = response.data;
+    if (data.status !== '000' || !Array.isArray(data.list)) {
+      console.log(`[fetchRecentDartFilings] DART API status: ${data.status}, message: ${data.message}`);
+      return [];
+    }
+
+    const result: DartFiling[] = [];
+
+    for (const item of data.list) {
+      if (!item?.report_nm) continue;
+
+      // 일자 파싱: "20260430"
+      const dateStr = item.rcept_dt || '';
+      let daysAgo = 0;
+      let formattedDate = dateStr;
+
+      if (dateStr.length === 8) {
+        const itemDate = new Date(
+          parseInt(dateStr.substring(0, 4)),
+          parseInt(dateStr.substring(4, 6)) - 1,
+          parseInt(dateStr.substring(6, 8))
+        );
+        daysAgo = Math.floor((now.getTime() - itemDate.getTime()) / (24 * 60 * 60 * 1000));
+        formattedDate = `${dateStr.substring(0, 4)}-${dateStr.substring(4, 6)}-${dateStr.substring(6, 8)}`;
+      }
+
+      result.push({
+        title: item.report_nm.trim(),
+        date: formattedDate,
+        url: `https://dart.fss.or.kr/dsaf001/main.do?rcpNo=${item.rcept_no}`,
+        daysAgo,
+        reportName: item.report_nm.trim(),
+      });
+
+      if (result.length >= maxCount) break;
+    }
+
+    console.log(`[fetchRecentDartFilings] code=${stockCode}, found=${result.length}`);
+    return result;
+
+  } catch (error: any) {
+    console.error(`[fetchRecentDartFilings] Error for ${stockCode}:`, error?.message || error);
+    return [];
+  }
+}
+
+function formatDartDate(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}${month}${day}`;
+}
+
+// 종목코드가 DART 매핑에 있는지 확인 (외부에서 사용 가능)
+export function hasDartMapping(stockCode: string): boolean {
+  return stockCode in corpCodeMap;
 }

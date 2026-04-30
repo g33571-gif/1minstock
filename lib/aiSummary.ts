@@ -431,3 +431,195 @@ function buildNewsFallback(recentNews: AINewsItem[]): AINewsAnalysis {
   };
 }
 
+// ============================================================
+// ⭐ V2: DART 공시 + 구글 뉴스 통합 AI 분석 (사장님 의도)
+// 네이버 의존 없이 공식 데이터로 분석
+// ============================================================
+
+export interface DartFilingItem {
+  title: string;
+  date: string;
+  url: string;
+  daysAgo: number;
+  reportName: string;
+}
+
+export interface GoogleNewsItem2 {
+  title: string;
+  link: string;
+  source: string;
+  daysAgo: number;
+}
+
+export interface AINewsAnalysisV2 {
+  comment: string;                  // AI 종합 코멘트 (한 줄)
+  filings: DartFilingItem[];        // 공식 공시 (최대 2개)
+  newsItems: GoogleNewsItem2[];     // 시장 뉴스 (최대 3개)
+  hasData: boolean;                 // 표시할 데이터 존재 여부
+}
+
+const newsCacheV2 = new Map<string, { data: AINewsAnalysisV2; ts: number }>();
+const NEWS_TTL_V2 = 1000 * 60 * 60 * 6; // 6시간
+
+export async function fetchAINewsAnalysisV2(
+  code: string,
+  name: string,
+  filings: DartFilingItem[],
+  newsItems: GoogleNewsItem2[]
+): Promise<AINewsAnalysisV2> {
+  console.log(`[fetchAINewsAnalysisV2] code=${code}, filings=${filings?.length || 0}, news=${newsItems?.length || 0}`);
+
+  // 둘 다 없으면 안내
+  if ((!filings || filings.length === 0) && (!newsItems || newsItems.length === 0)) {
+    return {
+      comment: '최근 7일 공시·뉴스가 없습니다',
+      filings: [],
+      newsItems: [],
+      hasData: false,
+    };
+  }
+
+  const cacheKey = `news_v2_${code}`;
+  const cached = newsCacheV2.get(cacheKey);
+  if (cached && Date.now() - cached.ts < NEWS_TTL_V2) {
+    console.log(`[fetchAINewsAnalysisV2] Cache hit for ${code}`);
+    return cached.data;
+  }
+
+  // 데이터 정제 (최대 개수 제한)
+  const topFilings = (filings || []).slice(0, 5);
+  const topNews = (newsItems || []).slice(0, 8);
+
+  // API 키 없으면 fallback
+  if (!ANTHROPIC_API_KEY) {
+    console.log(`[fetchAINewsAnalysisV2] No API key, using fallback`);
+    return buildV2Fallback(topFilings, topNews);
+  }
+
+  try {
+    // 프롬프트 구성
+    const filingsStr = topFilings.length > 0
+      ? topFilings.map((f, i) => `${i + 1}. [${f.daysAgo === 0 ? '오늘' : f.daysAgo + '일 전'}] ${f.title}`).join('\n')
+      : '(없음)';
+
+    const newsStr = topNews.length > 0
+      ? topNews.map((n, i) => `${i + 1}. [${n.daysAgo === 0 ? '오늘' : n.daysAgo + '일 전'}] ${n.title}`).join('\n')
+      : '(없음)';
+
+    const prompt = `당신은 한국 주식 분석가입니다. "${name}" 종목의 최근 공시와 뉴스를 통합 분석하세요.
+
+[공식 공시 (DART)]
+${filingsStr}
+
+[시장 뉴스 (구글뉴스)]
+${newsStr}
+
+[작업]
+1. 공시와 뉴스 전체를 보고 종합 코멘트 한 줄 작성 (30자 이내)
+2. 공시 중 가장 중요한 것 최대 2개 선별 (없으면 빈 배열)
+3. 뉴스 중 가장 중요한 것 최대 3개 선별 (없으면 빈 배열)
+
+[출력 - 반드시 이 JSON만]
+{
+  "comment": "30자 이내 종합 코멘트",
+  "filingIndices": [선별한 공시 번호 배열, 예: 1, 2],
+  "newsIndices": [선별한 뉴스 번호 배열, 예: 1, 3, 5]
+}
+
+[규칙]
+- 코멘트는 30자 이내, 객관적 사실 기반
+- 투자 권유·매수·매도 표현 절대 금지
+- 호재/악재 표현은 가능 (객관 분석)
+- filingIndices와 newsIndices는 위 목록 번호 (1부터)
+- JSON 외 텍스트 출력 금지`;
+
+    const res = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 400,
+        messages: [{ role: 'user', content: prompt }],
+      }),
+    });
+
+    if (!res.ok) {
+      console.log(`[fetchAINewsAnalysisV2] API failed (${res.status})`);
+      return buildV2Fallback(topFilings, topNews);
+    }
+
+    const data = await res.json();
+    const raw = data?.content?.[0]?.text?.trim();
+    if (!raw) return buildV2Fallback(topFilings, topNews);
+
+    const cleaned = raw.replace(/```json|```/g, '').trim();
+    let parsed: { comment: string; filingIndices: number[]; newsIndices: number[] };
+    try {
+      parsed = JSON.parse(cleaned);
+    } catch {
+      console.log(`[fetchAINewsAnalysisV2] JSON parse failed`);
+      return buildV2Fallback(topFilings, topNews);
+    }
+
+    if (!parsed.comment) return buildV2Fallback(topFilings, topNews);
+
+    const selectedFilings = (parsed.filingIndices || [])
+      .map(i => topFilings[i - 1])
+      .filter(f => f)
+      .slice(0, 2);
+
+    const selectedNews = (parsed.newsIndices || [])
+      .map(i => topNews[i - 1])
+      .filter(n => n)
+      .slice(0, 3);
+
+    // AI가 0개 선별했으면 fallback
+    if (selectedFilings.length === 0 && selectedNews.length === 0) {
+      return buildV2Fallback(topFilings, topNews);
+    }
+
+    const result: AINewsAnalysisV2 = {
+      comment: parsed.comment,
+      filings: selectedFilings,
+      newsItems: selectedNews,
+      hasData: true,
+    };
+
+    newsCacheV2.set(cacheKey, { data: result, ts: Date.now() });
+    console.log(`[fetchAINewsAnalysisV2] Success, filings=${selectedFilings.length}, news=${selectedNews.length}`);
+    return result;
+
+  } catch (e: any) {
+    console.error(`[fetchAINewsAnalysisV2] Error:`, e?.message || e);
+    return buildV2Fallback(topFilings, topNews);
+  }
+}
+
+function buildV2Fallback(filings: DartFilingItem[], newsItems: GoogleNewsItem2[]): AINewsAnalysisV2 {
+  const filingCount = filings.length;
+  const newsCount = newsItems.length;
+
+  let comment = '';
+  if (filingCount > 0 && newsCount > 0) {
+    comment = `최근 공시 ${filingCount}건·뉴스 다수 발생, 동향 확인`;
+  } else if (filingCount > 0) {
+    comment = `최근 공식 공시 ${filingCount}건, 회사 동향 확인`;
+  } else if (newsCount > 0) {
+    comment = `최근 시장 뉴스 ${newsCount}건, 동향 확인`;
+  } else {
+    comment = '최근 정보 없음';
+  }
+
+  return {
+    comment,
+    filings: filings.slice(0, 2),
+    newsItems: newsItems.slice(0, 3),
+    hasData: filingCount > 0 || newsCount > 0,
+  };
+}
+
+

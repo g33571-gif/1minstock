@@ -39,6 +39,24 @@ interface StockResult {
       daysAgo: number;
     }>;
   } | null;
+  // ⭐ V2: DART 공시 + 구글뉴스 통합
+  aiNewsV2: {
+    comment: string;
+    filings: Array<{
+      title: string;
+      date: string;
+      url: string;
+      daysAgo: number;
+      reportName: string;
+    }>;
+    newsItems: Array<{
+      title: string;
+      link: string;
+      source: string;
+      daysAgo: number;
+    }>;
+    hasData: boolean;
+  } | null;
   riskSignal: {
     hasRisk: boolean;
     level: 'critical_unbuyable' | 'critical' | 'warning' | 'caution' | 'info' | null;
@@ -318,18 +336,23 @@ export default function StockResultCard({ data, onClose }: {
         </p>
       </div>
 
-      {/* ⭐ AI 뉴스 카드 - 무조건 보이도록 4단계 fallback */}
+      {/* ⭐ AI 뉴스 카드 V2 - DART 공시 + 구글 뉴스 + AI 분석 */}
       {(() => {
-        // 1단계: AI 뉴스 분석 성공
-        if (data.aiNewsAnalysis && data.aiNewsAnalysis.selectedNews && data.aiNewsAnalysis.selectedNews.length > 0) {
+        // V2 데이터 우선
+        if (data.aiNewsV2 && data.aiNewsV2.hasData) {
+          const v2 = data.aiNewsV2;
+          const hasFilings = v2.filings.length > 0;
+          const hasNews = v2.newsItems.length > 0;
+
           return (
             <div className="bg-emerald-900 rounded-2xl border-2 border-amber-400 p-4 mb-3">
+              {/* 라벨 */}
               <div className="flex items-center gap-2 mb-3">
                 <div className="bg-amber-400 rounded-md px-2.5 py-1 flex items-center gap-1.5 flex-shrink-0">
                   <div className="w-1.5 h-1.5 rounded-full bg-emerald-900"></div>
                   <span className="text-[10px] font-semibold text-emerald-900">AI 뉴스</span>
                 </div>
-                <span className="text-[9px] text-emerald-300">최근 동향 · AI 분석</span>
+                <span className="text-[9px] text-emerald-300">공시 + 시장 뉴스 · AI 분석</span>
               </div>
 
               {/* AI 종합 코멘트 */}
@@ -340,46 +363,90 @@ export default function StockResultCard({ data, onClose }: {
                 <div>
                   <div className="text-[10px] font-medium text-amber-300 mb-0.5">종합 코멘트</div>
                   <div className="text-[12px] text-white leading-snug font-medium">
-                    {data.aiNewsAnalysis.comment}
+                    {v2.comment}
                   </div>
                 </div>
               </div>
 
-              {/* 선별된 뉴스 */}
-              <div className="space-y-2">
-                {data.aiNewsAnalysis.selectedNews.map((news, i) => (
-                  <a
-                    key={i}
-                    href={news.url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex items-start gap-2 hover:bg-emerald-800/40 rounded-lg p-1.5 -mx-1.5 transition-colors no-underline block"
-                  >
-                    <div className="w-5 h-5 rounded-full bg-amber-400/25 flex items-center justify-center flex-shrink-0 mt-0.5">
-                      <span className="text-[9px] font-medium text-amber-300">
-                        {i === 0 ? '①' : i === 1 ? '②' : '③'}
-                      </span>
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-[12px] text-white leading-snug m-0 line-clamp-2 font-medium">
-                        {news.title}
-                      </p>
-                      <p className="text-[9px] text-emerald-300 m-0 mt-0.5">
-                        {news.daysAgo === 0 ? '오늘' : `${news.daysAgo}일 전`} · 네이버 금융
-                      </p>
-                    </div>
-                  </a>
-                ))}
-              </div>
+              {/* 공식 공시 (DART) */}
+              {hasFilings && (
+                <div className="mb-3">
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className="text-[9px] text-amber-300 font-semibold">📋 공식 공시 (DART)</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {v2.filings.map((filing, i) => (
+                      <a
+                        key={i}
+                        href={filing.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-start gap-2 hover:bg-emerald-800/40 rounded-lg p-1.5 -mx-1.5 transition-colors no-underline block"
+                      >
+                        <div className="w-5 h-5 rounded-full bg-amber-400/25 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <span className="text-[9px] font-medium text-amber-300">
+                            {i === 0 ? '①' : '②'}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] text-white leading-snug m-0 line-clamp-2 font-medium">
+                            {filing.title}
+                          </p>
+                          <p className="text-[9px] text-emerald-300 m-0 mt-0.5">
+                            {filing.daysAgo === 0 ? '오늘' : `${filing.daysAgo}일 전`} · 금융감독원 DART
+                          </p>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* 시장 뉴스 (구글 뉴스) */}
+              {hasNews && (
+                <div className={hasFilings ? 'pt-2 border-t border-amber-400/20' : ''}>
+                  <div className="flex items-center gap-1.5 mb-2">
+                    <span className="text-[9px] text-amber-300 font-semibold">📰 시장 뉴스</span>
+                  </div>
+                  <div className="space-y-1.5">
+                    {v2.newsItems.map((news, i) => (
+                      <a
+                        key={i}
+                        href={news.link}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex items-start gap-2 hover:bg-emerald-800/40 rounded-lg p-1.5 -mx-1.5 transition-colors no-underline block"
+                      >
+                        <div className="w-5 h-5 rounded-full bg-amber-400/25 flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <span className="text-[9px] font-medium text-amber-300">
+                            {hasFilings
+                              ? (i === 0 ? '③' : i === 1 ? '④' : '⑤')
+                              : (i === 0 ? '①' : i === 1 ? '②' : '③')}
+                          </span>
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[12px] text-white leading-snug m-0 line-clamp-2 font-medium">
+                            {news.title}
+                          </p>
+                          <p className="text-[9px] text-emerald-300 m-0 mt-0.5">
+                            {news.daysAgo === 0 ? '오늘' : `${news.daysAgo}일 전`}
+                            {news.source ? ` · ${news.source}` : ' · 구글 뉴스'}
+                          </p>
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               <p className="text-[9px] text-emerald-400/50 mt-3">
-                ※ 네이버 금융 뉴스 + AI 분석 · 투자 권유 아님
+                ※ DART 공시 + 구글 뉴스 + AI 분석 · 투자 권유 아님
               </p>
             </div>
           );
         }
 
-        // 2단계: AI 분석 실패했지만 latestNews는 있음 → 단일 뉴스를 시그니처로
+        // V2 데이터 없음 - latestNews라도 표시
         if (data.latestNews) {
           return (
             <div className="bg-emerald-900 rounded-2xl border-2 border-amber-400 p-4 mb-3">
@@ -401,19 +468,19 @@ export default function StockResultCard({ data, onClose }: {
                     {data.latestNews.title}
                   </p>
                   <p className="text-[9px] text-emerald-300 m-0 mt-0.5">
-                    {data.latestNews.time} · 네이버 금융
+                    {data.latestNews.time}
                   </p>
                 </div>
               </a>
 
               <p className="text-[9px] text-emerald-400/50 mt-3">
-                ※ 네이버 금융 뉴스 · 투자 권유 아님
+                ※ 단일 뉴스 · 투자 권유 아님
               </p>
             </div>
           );
         }
 
-        // 3단계: 모두 실패 - 안내 카드
+        // 모두 실패 - 안내
         return (
           <div className="bg-emerald-900 rounded-2xl border-2 border-amber-400 p-4 mb-3">
             <div className="flex items-center gap-2 mb-3">
@@ -429,16 +496,16 @@ export default function StockResultCard({ data, onClose }: {
               </div>
               <div>
                 <div className="text-[12px] text-white leading-snug font-medium mb-1">
-                  최근 뉴스가 없습니다
+                  최근 7일 공시·뉴스가 없습니다
                 </div>
                 <div className="text-[10px] text-emerald-300">
-                  네이버 금융에서 직접 검색해보세요
+                  DART 또는 포털에서 직접 검색해보세요
                 </div>
               </div>
             </div>
 
             <p className="text-[9px] text-emerald-400/50 mt-3">
-              ※ 네이버 금융 뉴스 · 잠시 후 다시 시도
+              ※ DART 공시 + 구글 뉴스 검색 결과
             </p>
           </div>
         );

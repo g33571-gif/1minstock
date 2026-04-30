@@ -1,7 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { fetchNaverStock, fetchRecentNews } from '@/lib/naverFinance';
+import { fetchNaverStock } from '@/lib/naverFinance';
 import { fetchInvestorTrading } from '@/lib/investorTrading';
-import { fetchAIBriefing, fetchCompanyOverview, fetchAINewsAnalysis } from '@/lib/aiSummary';
+import {
+  fetchAIBriefing,
+  fetchCompanyOverview,
+  fetchAINewsAnalysisV2,
+} from '@/lib/aiSummary';
+import { fetchRecentDartFilings } from '@/lib/dart';
+import { fetchGoogleNews } from '@/lib/googleNews';
 import { comparePer, comparePbr, getIndustryName, hasIndustryMapping } from '@/lib/data/industries';
 
 export const dynamic = 'force-dynamic';
@@ -23,25 +29,14 @@ export async function GET(
       return NextResponse.json({ error: '종목을 찾을 수 없어요' }, { status: 404 });
     }
 
-    // 매매동향 + 최근 뉴스 병렬 (속도 ↑)
-    const [tradingData, recentNews] = await Promise.all([
+    // ⭐ 매매동향 + DART 공시 + 구글뉴스 병렬 (속도 ↑)
+    const [tradingData, dartFilings, googleNewsItems] = await Promise.all([
       fetchInvestorTrading(code, naverData.price),
-      fetchRecentNews(code, 7), // 최대 7개 가져옴 (AI가 3개 선별)
+      fetchRecentDartFilings(code, 5),
+      fetchGoogleNews(naverData.name, 8),
     ]);
 
-    console.log(`[API/stock] code=${code}, recent news count=${recentNews.length}, latestNews exists=${!!naverData.latestNews}`);
-
-    // ⭐ 뉴스가 0개일 때 latestNews라도 활용
-    let newsForAI = recentNews;
-    if (recentNews.length === 0 && naverData.latestNews) {
-      console.log(`[API/stock] Using latestNews as fallback for ${code}`);
-      newsForAI = [{
-        title: naverData.latestNews.title,
-        time: naverData.latestNews.time,
-        url: naverData.latestNews.url,
-        daysAgo: 0,
-      }];
-    }
+    console.log(`[API/stock] code=${code}, dart=${dartFilings.length}, googleNews=${googleNewsItems.length}`);
 
     const f5d   = tradingData?.foreign5d ?? 0;
     const i5d   = tradingData?.institution5d ?? 0;
@@ -64,8 +59,8 @@ export async function GET(
 
     const industryName = hasIndustryMapping(code) ? getIndustryName(code) : '';
 
-    // ⭐ AI 호출 3개 병렬 (브리핑 + 회사요약 + 뉴스분석)
-    const [aiBriefing, companyOverview, aiNewsAnalysis] = await Promise.all([
+    // ⭐ AI 호출 3개 병렬 (브리핑 + 회사요약 + V2 뉴스 분석)
+    const [aiBriefing, companyOverview, aiNewsV2] = await Promise.all([
       fetchAIBriefing({
         name: naverData.name,
         price: naverData.price,
@@ -86,7 +81,23 @@ export async function GET(
         volumeRatio: naverData.volumeRatioCalc,
       }),
       fetchCompanyOverview(code, naverData.name, industryName),
-      fetchAINewsAnalysis(code, naverData.name, newsForAI),
+      fetchAINewsAnalysisV2(
+        code,
+        naverData.name,
+        dartFilings.map(f => ({
+          title: f.title,
+          date: f.date,
+          url: f.url,
+          daysAgo: f.daysAgo,
+          reportName: f.reportName,
+        })),
+        googleNewsItems.map(n => ({
+          title: n.title,
+          link: n.link,
+          source: n.source,
+          daysAgo: n.daysAgo,
+        })),
+      ),
     ]);
 
     return NextResponse.json({
@@ -121,9 +132,8 @@ export async function GET(
       perCompare: comparePer(naverData.per, code),
       pbrCompare: comparePbr(naverData.pbr, code),
       aiBriefing,
-      // ⭐ AI 뉴스 (기존 latestNews는 호환성 위해 유지)
-      latestNews: naverData.latestNews,
-      aiNewsAnalysis,
+      latestNews: naverData.latestNews,  // 호환성 유지 (네이버)
+      aiNewsV2,                          // ⭐ NEW: DART + 구글뉴스
       riskSignal: naverData.riskSignal,
     }, {
       headers: {
