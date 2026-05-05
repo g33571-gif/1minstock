@@ -5,18 +5,36 @@ import { useSearchParams, useRouter } from 'next/navigation';
 import SearchBar from '@/components/home/SearchBar';
 import MarketIndices from '@/components/home/MarketIndices';
 import StockResultCard from '@/components/home/StockResultCard';
+import AdfitBanner from '@/components/ads/AdfitBanner';
+import CoupangBanner from '@/components/ads/CoupangBanner';
 
-const MobileAd = () => (
-  <div className="lg:hidden border border-dashed border-slate-200 rounded-xl p-3 text-center mb-4 bg-slate-50">
-    <div className="text-[10px] text-slate-400 font-semibold mb-1">AD · 광고</div>
-    <div className="text-xs text-slate-300 flex items-center justify-center" style={{ minHeight: '100px' }}>320×100</div>
+// ============================================
+// 광고 단위 ID
+// ============================================
+const ADFIT_MOBILE_320 = process.env.NEXT_PUBLIC_ADFIT_MOBILE_BANNER || 'DAN-lx9Cj2krmA4R3Rp0';
+
+// ============================================
+// 광고 컴포넌트
+// ============================================
+
+// 모바일 작은 배너 (320×100) - UX 우선 자리 (애드핏)
+const MobileSmallAd = () => (
+  <div className="lg:hidden mb-4 flex justify-center">
+    <AdfitBanner adUnit={ADFIT_MOBILE_320} width={320} height={100} />
   </div>
 );
 
-const PCBannerAd = () => (
-  <div className="hidden lg:flex border border-dashed border-slate-200 rounded-xl p-3 mb-4 bg-slate-50 items-center justify-center flex-col">
-    <div className="text-[10px] text-slate-400 font-semibold mb-1">AD · 광고</div>
-    <div className="text-xs text-slate-300" style={{ minHeight: '90px', display: 'flex', alignItems: 'center' }}>728×90</div>
+// 쿠팡 사각 (300×250) - 모바일/PC 공용
+const CoupangSquareAd = ({ subId }: { subId: string }) => (
+  <div className="mb-4 flex justify-center">
+    <CoupangBanner variant="square" subId={subId} />
+  </div>
+);
+
+// 쿠팡 와이드 (680×140) - PC 메인 영역용
+const CoupangWideAd = ({ subId }: { subId: string }) => (
+  <div className="mb-4">
+    <CoupangBanner variant="wide" subId={subId} />
   </div>
 );
 
@@ -41,7 +59,6 @@ const POPULAR = [
   { name: 'NAVER', code: '035420' },
 ];
 
-// 종목명 → 종목코드 빠른 검색
 async function findCodeByName(name: string): Promise<{ code: string; name: string } | null> {
   try {
     const res = await fetch(`/api/search?q=${encodeURIComponent(name)}`);
@@ -56,8 +73,6 @@ async function findCodeByName(name: string): Promise<{ code: string; name: strin
   }
 }
 
-// ⭐ useSearchParams를 쓰는 부분만 별도 컴포넌트로 분리
-// (Next.js 14에서 useSearchParams는 반드시 Suspense 안에 있어야 함)
 function HomePageContent() {
   const searchParams = useSearchParams();
   const router = useRouter();
@@ -86,7 +101,6 @@ function HomePageContent() {
     }
   };
 
-  // URL 파라미터로 검색어가 들어오면 자동 검색
   useEffect(() => {
     const code = searchParams.get('code');
     const q = searchParams.get('q');
@@ -166,10 +180,10 @@ function HomePageContent() {
 
       <SearchBar onSelect={handleSelect} selectedName={selectedName} />
 
+      {/* 검색 전: 검색바 직후 광고 (모바일은 애드핏, PC는 광고 안 넣음 - 사이드바에서 처리) */}
       {!showResult && (
         <>
-          <MobileAd />
-          <PCBannerAd />
+          <MobileSmallAd />
         </>
       )}
 
@@ -183,12 +197,9 @@ function HomePageContent() {
         </div>
       )}
 
+      {/* 결과 페이지: StockResultCard 안에 광고 4개 자동 삽입됨 */}
       {!loading && result && (
-        <>
-          <StockResultCard data={result} onClose={handleClose} />
-          <MobileAd />
-          <PCBannerAd />
-        </>
+        <StockResultCard data={result} onClose={handleClose} />
       )}
 
       {!showResult && (
@@ -212,7 +223,8 @@ function HomePageContent() {
             <div className="text-[11px] font-medium text-slate-400 mb-2 px-1">시장 현황</div>
             <MarketIndices />
           </div>
-          <MobileAd />
+          {/* 메인 페이지 하단: 시장 현황 본 후 자연 노출 자리 (쿠팡 와이드) 🟦 */}
+          <CoupangWideAd subId="main-bottom" />
         </>
       )}
 
@@ -224,7 +236,6 @@ function HomePageContent() {
   );
 }
 
-// 로딩 중 보여줄 간단한 화면
 function HomePageFallback() {
   return (
     <div className="min-h-screen flex items-center justify-center py-20">
@@ -236,7 +247,6 @@ function HomePageFallback() {
   );
 }
 
-// ⭐ 메인 페이지 - Suspense로 감싸서 useSearchParams 에러 해결
 export default function HomePage() {
   return (
     <Suspense fallback={<HomePageFallback />}>

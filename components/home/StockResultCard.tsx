@@ -1,5 +1,11 @@
 'use client';
 
+import AdfitBanner from '@/components/ads/AdfitBanner';
+import CoupangBanner from '@/components/ads/CoupangBanner';
+
+// 광고 단위 ID
+const ADFIT_MOBILE_320 = process.env.NEXT_PUBLIC_ADFIT_MOBILE_BANNER || 'DAN-lx9Cj2krmA4R3Rp0';
+
 interface ValuationCompare {
   industryName: string;
   myValue: number;
@@ -272,14 +278,9 @@ export default function StockResultCard({ data, onClose }: {
         );
       })()}
 
-      {/* ⭐ 모바일 광고 1 - AI 뉴스 후 (PC는 사이드 광고가 있어서 숨김) */}
-      <div className="lg:hidden mb-3">
-        <div className="bg-bg-subtle border border-dashed border-slate-300 rounded-xl p-3 text-center">
-          <div className="text-[10px] text-slate-500 font-semibold mb-1">AD · 광고</div>
-          <div className="text-xs text-slate-400 flex items-center justify-center" style={{ minHeight: '100px' }}>
-            [ 320×100 모바일 배너 ]
-          </div>
-        </div>
+      {/* ⭐ 광고 슬롯 1 - 위험신호 후 (모바일 + PC) - 쿠팡 사각 300×250 */}
+      <div className="mb-3 flex justify-center">
+        <CoupangBanner variant="square" subId="result-after-risk" />
       </div>
 
       {/* 1년 가격 위치 - 흰색 카드 (가독성, 시각적 휴식) */}
@@ -521,14 +522,9 @@ export default function StockResultCard({ data, onClose }: {
         );
       })()}
 
-      {/* ⭐ 모바일 광고 2 - 1년 가격 후 (PC는 숨김) */}
-      <div className="lg:hidden mb-3">
-        <div className="bg-bg-subtle border border-dashed border-slate-300 rounded-xl p-3 text-center">
-          <div className="text-[10px] text-slate-500 font-semibold mb-1">AD · 광고</div>
-          <div className="text-xs text-slate-400 flex items-center justify-center" style={{ minHeight: '100px' }}>
-            [ 320×100 모바일 배너 ]
-          </div>
-        </div>
+      {/* ⭐ 광고 슬롯 2 - 1년 가격 후 (모바일 + PC) - 쿠팡 와이드 680×140 */}
+      <div className="mb-3">
+        <CoupangBanner variant="wide" subId="result-after-chart" />
       </div>
 
       {/* 핵심 지표 - 흰색 카드들 */}
@@ -670,6 +666,16 @@ export default function StockResultCard({ data, onClose }: {
 
       <div className="text-center text-[10px] text-slate-400 py-1">
         ※ 공개 데이터 요약 · 약 15~20분 지연 · 투자 자문 아님 · 판단은 본인 책임
+      </div>
+
+      {/* ⭐ 광고 슬롯 3 - 핵심 지표 후 (모바일 전용 애드핏 320×100) */}
+      <div className="lg:hidden mt-3 mb-3 flex justify-center">
+        <AdfitBanner adUnit={ADFIT_MOBILE_320} width={320} height={100} />
+      </div>
+
+      {/* ⭐ 광고 슬롯 4 - 페이지 끝 쿠팡 사각 300×250 (모바일 + PC) */}
+      <div className="mt-3 mb-3 flex justify-center">
+        <CoupangBanner variant="square" subId="result-bottom" />
       </div>
     </div>
   );

@@ -3,6 +3,8 @@ import { Suspense } from 'react';
 import Header from '@/components/layout/Header';
 import Footer from '@/components/layout/Footer';
 import LoadingProgress from '@/components/common/LoadingProgress';
+import AdfitBanner from '@/components/ads/AdfitBanner';
+import CoupangBanner from '@/components/ads/CoupangBanner';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -29,6 +31,8 @@ export const metadata: Metadata = {
   },
 };
 
+const ADFIT_SIDEBAR_TOP = process.env.NEXT_PUBLIC_ADFIT_SIDEBAR_TOP || 'DAN-lLo0fplyrA1YBk9Q';
+
 export default function RootLayout({
   children,
 }: {
@@ -37,8 +41,9 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <head>
-        <script 
-          async 
+        {/* 카카오 애드핏 SDK */}
+        <script
+          async
           src="//t1.daumcdn.net/kas/static/ba.min.js"
         />
       </head>
@@ -46,40 +51,43 @@ export default function RootLayout({
         <Suspense fallback={null}>
           <LoadingProgress />
         </Suspense>
+
         {/* 헤더 - 전체 너비 단독 영역 (광고와 분리) */}
         <header className="sticky top-0 z-40 bg-bg-page/95 backdrop-blur-sm border-b border-emerald-700/[0.06]">
           <div className="max-w-6xl mx-auto">
             <Header />
           </div>
         </header>
-        
-        {/* 메인 콘텐츠 영역 - 헤더 아래부터 광고 시작 */}
+
+        {/* 메인 콘텐츠 영역 */}
         <main className="max-w-6xl mx-auto px-4 py-4">
           <div className="lg:grid lg:grid-cols-[1fr_336px] lg:gap-8">
-            
+
             {/* 메인 영역 */}
             <div className="max-w-[760px] mx-auto w-full lg:mx-0">
               {children}
               <Footer />
             </div>
 
-            {/* 우측 광고 (PC만) - 헤더 아래부터 시작 */}
+            {/* 우측 광고 (PC만) - 광고 2개로 정리 (이전 3개 → 빈 공간 문제 해결) */}
             <aside className="hidden lg:flex lg:flex-col lg:gap-4">
-              {/* 우측 상단 광고 (Static) - 336x280 */}
-              <div className="bg-bg-subtle border border-dashed border-slate-300 rounded-xl p-3 text-center">
-                <div className="text-[10px] text-slate-500 font-semibold mb-1">AD · 광고</div>
-                <div className="text-xs text-slate-400 flex items-center justify-center" style={{ minHeight: '280px' }}>
-                  [ 336×280 ]
-                </div>
+
+              {/* 우측 상단 애드핏 - 300×250 (Above the Fold, 안정 수익) 🟢 */}
+              <div className="bg-white rounded-xl p-2 shadow-sm">
+                <AdfitBanner
+                  adUnit={ADFIT_SIDEBAR_TOP}
+                  width={300}
+                  height={250}
+                />
               </div>
-              
-              {/* 우측 중간 광고 (Sticky) - 300x600 */}
+
+              {/* 우측 sticky 쿠팡 - 300×250 캐러셀 (스크롤 따라옴, 메인 수익) 🟦 */}
               <div className="ad-sticky ad-sticky-middle">
-                <div className="bg-bg-subtle border border-dashed border-slate-300 rounded-xl p-3 text-center">
-                  <div className="text-[10px] text-slate-500 font-semibold mb-1">AD · 광고</div>
-                  <div className="text-xs text-slate-400 flex items-center justify-center" style={{ minHeight: '600px' }}>
-                    [ 300×600 ]
-                  </div>
+                <div className="bg-white rounded-xl p-2 shadow-sm">
+                  <CoupangBanner
+                    variant="square"
+                    subId="sidebar-sticky"
+                  />
                 </div>
               </div>
             </aside>
