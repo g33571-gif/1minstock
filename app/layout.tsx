@@ -29,6 +29,10 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
+  // ⭐ Google Search Console 도메인 소유권 인증
+  verification: {
+    google: '_tNatl-zq2FkCGHWgcAgHUl5He0jrb3upznlRbuIO3M',
+  },
 };
 
 const ADFIT_SIDEBAR_TOP = process.env.NEXT_PUBLIC_ADFIT_SIDEBAR_TOP || 'DAN-lLo0fplyrA1YBk9Q';
