@@ -29,9 +29,12 @@ export const metadata: Metadata = {
     index: true,
     follow: true,
   },
-  // ⭐ Google Search Console 도메인 소유권 인증
+  // ⭐ 검색엔진 도메인 소유권 인증
   verification: {
     google: '_tNatl-zq2FkCGHWgcAgHUl5He0jrb3upznlRbuIO3M',
+    other: {
+      'naver-site-verification': '108cb99db7a77718bc4e2d4bef8dece74748db16',
+    },
   },
 };
 
