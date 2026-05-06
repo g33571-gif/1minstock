@@ -41,10 +41,11 @@ export default function RootLayout({
   return (
     <html lang="ko">
       <head>
-        {/* 카카오 애드핏 SDK */}
+        {/* 카카오 애드핏 SDK - 최신 공식 URL (kakaocdn.net) */}
         <script
           async
-          src="//t1.daumcdn.net/kas/static/ba.min.js"
+          type="text/javascript"
+          src="//t1.kakaocdn.net/kas/static/ba.min.js"
         />
       </head>
       <body className="bg-bg-page">
@@ -69,10 +70,10 @@ export default function RootLayout({
               <Footer />
             </div>
 
-            {/* 우측 광고 (PC만) - 광고 2개로 정리 (이전 3개 → 빈 공간 문제 해결) */}
+            {/* 우측 광고 (PC만) - 광고 2개로 정리 */}
             <aside className="hidden lg:flex lg:flex-col lg:gap-4">
 
-              {/* 우측 상단 애드핏 - 300×250 (Above the Fold, 안정 수익) 🟢 */}
+              {/* 우측 상단 애드핏 - 300×250 (Above the Fold) 🟢 */}
               <div className="bg-white rounded-xl p-2 shadow-sm">
                 <AdfitBanner
                   adUnit={ADFIT_SIDEBAR_TOP}
@@ -81,7 +82,7 @@ export default function RootLayout({
                 />
               </div>
 
-              {/* 우측 sticky 쿠팡 - 300×250 캐러셀 (스크롤 따라옴, 메인 수익) 🟦 */}
+              {/* 우측 sticky 쿠팡 - 300×250 캐러셀 🟦 */}
               <div className="ad-sticky ad-sticky-middle">
                 <div className="bg-white rounded-xl p-2 shadow-sm">
                   <CoupangBanner
