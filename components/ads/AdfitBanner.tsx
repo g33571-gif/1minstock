@@ -1,19 +1,21 @@
 'use client';
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 /**
- * 카카오 애드핏 배너 컴포넌트 V3
+ * 카카오 애드핏 배너 컴포넌트 V4
  *
- * V3 변경사항 (2026-05-06):
- * 1. SDK URL을 카카오 공식 가이드대로 변경 (daumcdn.net → kakaocdn.net)
- * 2. 광고 영역 옆에 SDK 스크립트 직접 삽입 (카카오 공식 권장 방식)
- * 3. 카카오 봇이 광고 호출을 즉시 인식할 수 있도록 개선
+ * V4 변경사항 (2026-05-07):
+ * 1. 첫 방문 시 광고 미로딩 문제 해결 (Hydration 이슈)
+ * 2. SDK 로드 완료 후 광고 강제 새로고침 처리
+ * 3. ins 태그를 처음부터 보이게 (display: none 제거)
+ * 4. SDK가 광고를 못 잡았을 때 재시도 로직 추가
+ * 5. 라우트 변경 시 광고 자동 재로드 (SPA 대응)
  *
- * 효과성 최적화 포인트:
- * 1. 광고 차단(AdBlock) 사용자도 레이아웃 안 깨짐 (min-height 고정)
- * 2. 페이지 라우팅 변경 시 광고 자동 재로드 (Next.js SPA 대응)
- * 3. "AD · 광고" 라벨 명시 → 정책 준수 + 신뢰도
+ * 핵심 원리:
+ * - SDK는 페이지 로드 시 1번만 ins 태그를 스캔
+ * - Next.js의 hydration 시점에 ins 태그가 늦게 추가되면 SDK가 못 잡음
+ * - 해결: ins 태그를 추가한 후 SDK에 다시 인식하도록 트리거
  */
 
 interface AdfitBannerProps {
@@ -24,8 +26,53 @@ interface AdfitBannerProps {
   label?: boolean;
 }
 
-// 전역 SDK 로드 추적 (한 페이지에 여러 광고 있어도 SDK는 1번만 로드)
-let sdkLoaded = false;
+// 전역 SDK 로드 상태 추적
+let sdkLoadPromise: Promise<void> | null = null;
+
+/**
+ * 카카오 AdFit SDK 한 번만 로드하기
+ * 여러 광고가 있어도 SDK는 1번만 로드
+ */
+function loadAdfitSDK(): Promise<void> {
+  if (sdkLoadPromise) return sdkLoadPromise;
+
+  sdkLoadPromise = new Promise<void>((resolve) => {
+    if (typeof window === 'undefined') {
+      resolve();
+      return;
+    }
+
+    // 이미 로드된 스크립트 확인
+    const existing = document.querySelector(
+      'script[src*="kakaocdn.net/kas/static/ba.min.js"]'
+    );
+    if (existing) {
+      // 이미 있으면 약간 기다리기 (SDK 초기화 시간)
+      setTimeout(resolve, 50);
+      return;
+    }
+
+    // 새로 로드
+    const script = document.createElement('script');
+    script.src = '//t1.kakaocdn.net/kas/static/ba.min.js';
+    script.async = true;
+    script.type = 'text/javascript';
+
+    script.onload = () => {
+      // SDK 로드 후 안정화 시간
+      setTimeout(resolve, 100);
+    };
+
+    script.onerror = () => {
+      // 에러나도 resolve (사이트 동작에 영향 없게)
+      resolve();
+    };
+
+    document.head.appendChild(script);
+  });
+
+  return sdkLoadPromise;
+}
 
 export default function AdfitBanner({
   adUnit,
@@ -34,41 +81,74 @@ export default function AdfitBanner({
   className = '',
   label = true,
 }: AdfitBannerProps) {
-  const adRef = useRef<HTMLModElement>(null);
-  const loadedRef = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [mounted, setMounted] = useState(false);
 
+  // Hydration 후에만 실제 광고 렌더링
   useEffect(() => {
-    if (loadedRef.current) return;
-    const ins = adRef.current;
-    if (!ins) return;
+    setMounted(true);
+  }, []);
 
-    // SDK가 아직 로드 안 됐으면 로드
-    if (!sdkLoaded && typeof window !== 'undefined') {
-      const existingScript = document.querySelector('script[src*="kakaocdn.net/kas/static/ba.min.js"]');
-      if (!existingScript) {
-        const script = document.createElement('script');
-        script.src = '//t1.kakaocdn.net/kas/static/ba.min.js';
-        script.async = true;
-        script.type = 'text/javascript';
-        document.head.appendChild(script);
-      }
-      sdkLoaded = true;
-    }
+  // 광고 로드 처리
+  useEffect(() => {
+    if (!mounted) return;
+    if (!containerRef.current) return;
+    if (!adUnit) return;
 
-    // SDK가 광고를 다시 fetch하도록 cloneNode + replace
-    // (Next.js SPA 라우팅 시 광고가 재로드되지 않는 문제 해결)
-    const timer = setTimeout(() => {
-      try {
-        const cloned = ins.cloneNode(true) as HTMLElement;
-        ins.parentNode?.replaceChild(cloned, ins);
-        loadedRef.current = true;
-      } catch {
-        // 광고 로드 실패해도 사이트 동작에 영향 없음
-      }
-    }, 100);
+    let cancelled = false;
+    const container = containerRef.current;
 
-    return () => clearTimeout(timer);
-  }, [adUnit]);
+    const loadAd = async () => {
+      // SDK 로드 대기
+      await loadAdfitSDK();
+      if (cancelled) return;
+
+      // 컨테이너 비우고 새 ins 태그 생성
+      // (이렇게 해야 SDK가 새 광고로 인식)
+      container.innerHTML = '';
+
+      const ins = document.createElement('ins');
+      ins.className = 'kakao_ad_area';
+      ins.style.display = 'block';
+      ins.style.width = `${width}px`;
+      ins.style.height = `${height}px`;
+      ins.setAttribute('data-ad-unit', adUnit);
+      ins.setAttribute('data-ad-width', String(width));
+      ins.setAttribute('data-ad-height', String(height));
+
+      container.appendChild(ins);
+
+      // SDK가 새로 추가된 ins 태그를 인식하도록 약간 기다림
+      // 그래도 광고가 안 떴다면 한 번 더 시도
+      setTimeout(() => {
+        if (cancelled) return;
+        // 광고가 정상 로드됐는지 확인
+        const iframe = ins.querySelector('iframe');
+        if (!iframe) {
+          // 아직 광고가 안 떴으면 SDK 강제 트리거
+          // ba.min.js가 자동으로 ins 태그를 다시 스캔하도록
+          const scriptTrigger = document.createElement('script');
+          scriptTrigger.src = '//t1.kakaocdn.net/kas/static/ba.min.js';
+          scriptTrigger.async = true;
+          document.head.appendChild(scriptTrigger);
+          // 1초 후 자동으로 제거 (메모리 정리)
+          setTimeout(() => {
+            try {
+              document.head.removeChild(scriptTrigger);
+            } catch (e) {
+              // 무시
+            }
+          }, 1000);
+        }
+      }, 500);
+    };
+
+    loadAd();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mounted, adUnit, width, height]);
 
   return (
     <div
@@ -87,13 +167,13 @@ export default function AdfitBanner({
           AD · 광고
         </div>
       )}
-      <ins
-        ref={adRef}
-        className="kakao_ad_area"
-        style={{ display: 'none' }}
-        data-ad-unit={adUnit}
-        data-ad-width={String(width)}
-        data-ad-height={String(height)}
+      {/* 광고가 들어갈 컨테이너 (useEffect에서 ins 태그 동적 생성) */}
+      <div
+        ref={containerRef}
+        style={{
+          width: `${width}px`,
+          minHeight: `${height}px`,
+        }}
       />
     </div>
   );
