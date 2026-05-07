@@ -21,7 +21,7 @@ export default function AdSlot({ unit, size, sticky = false, className = '' }: A
     if (typeof window !== 'undefined' && unit) {
       const script = document.createElement('script');
       script.async = true;
-      script.src = '//t1.daumcdn.net/kas/static/ba.min.js';
+      script.src = '//t1.kakaocdn.net/kas/static/ba.min.js';
       document.body.appendChild(script);
 
       return () => {
